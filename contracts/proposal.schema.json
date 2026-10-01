@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-control.dev/contracts/proposal.schema.json",
+  "$id": "https://ictus.dev/contracts/proposal.schema.json",
   "title": "DecisionProposal",
   "description": "An untrusted proposed bounded action, produced by any DecisionProvider (rules, model, LLM, human). It must pass policy/capability validation before it can become an ExecutionIntent.",
   "type": "object",

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dagster import Failure, In, Out, RetryPolicy, op
 
-from agentic_dagster.resources.execution_settings import ExecutionSettings
+from ictus_dagster.resources.execution_settings import ExecutionSettings
 
 # Retries are an execution concern and are declared on the step, never in the
 # decision/policy core.

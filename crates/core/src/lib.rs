@@ -1,4 +1,4 @@
-//! Typed, versioned domain contracts for the `agentic-control` layer.
+//! Typed, versioned domain contracts for the `ictus` layer.
 //!
 //! This crate is the *generic* core. It must never contain domain-specific,
 //! model-specific, provider-specific, transport-specific or infrastructure

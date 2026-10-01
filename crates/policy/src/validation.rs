@@ -3,7 +3,7 @@
 //! Structural validation is separate from policy evaluation. It answers
 //! "is this shape well-formed and versioned?" — never "is this authorized?".
 
-use agentic_core::{Capability, ContractError, DecisionProposal};
+use ictus_core::{Capability, ContractError, DecisionProposal};
 
 /// Validate a proposal's structure and version.
 pub fn validate_proposal(proposal: &DecisionProposal) -> Result<(), ContractError> {
@@ -18,7 +18,7 @@ pub fn validate_capability(capability: &Capability) -> Result<(), ContractError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agentic_core::{DecisionKind, ProviderMetadata, RiskClass, Subject, SCHEMA_VERSION};
+    use ictus_core::{DecisionKind, ProviderMetadata, RiskClass, Subject, SCHEMA_VERSION};
 
     fn provider() -> ProviderMetadata {
         ProviderMetadata::rules("test-rules")

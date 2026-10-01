@@ -47,7 +47,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: build rust bridge
-        run: cargo build -q -p agentic-bridge
+        run: cargo build -q -p ictus-bridge
       - name: sync python
         run: uv sync --frozen
       - name: run boundary proof

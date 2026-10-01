@@ -1,10 +1,11 @@
 [package]
-name = "agentic-core"
-description = "Typed, versioned domain contracts for the agentic-control decision/policy layer."
+name = "ictus-core"
+description = "Typed, versioned domain contracts for the ictus decision/policy layer."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 serde = { workspace = true }

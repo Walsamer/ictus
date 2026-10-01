@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from dagster import job
 
-from agentic_dagster.ops.execute import execute_op
-from agentic_dagster.ops.finalize import finalize_op
-from agentic_dagster.ops.prepare import prepare_op
-from agentic_dagster.ops.verify import verify_op
-from agentic_dagster.resources.execution_settings import ExecutionSettings
+from ictus_dagster.ops.execute import execute_op
+from ictus_dagster.ops.finalize import finalize_op
+from ictus_dagster.ops.prepare import prepare_op
+from ictus_dagster.ops.verify import verify_op
+from ictus_dagster.resources.execution_settings import ExecutionSettings
 
 
 @job(

@@ -5,7 +5,7 @@
 //! `contracts/`. If a change breaks one of these, it is a breaking contract
 //! change and requires a new `schema_version`.
 
-use agentic_core::{
+use ictus_core::{
     ContractError, ExecutionIntent, ExecutionObservation, ExecutionResult, ExecutionStatus,
     ObservationCategory, PolicyDecision, PolicyDecisionKind, StateSnapshot, SCHEMA_VERSION,
 };
@@ -84,7 +84,7 @@ fn all_serialized_contracts_carry_schema_version() {
         "s1",
         "2026-10-01T00:00:00Z",
         "software",
-        agentic_core::Subject::new("task", "t1"),
+        ictus_core::Subject::new("task", "t1"),
     );
     let observation = ExecutionObservation::new(
         "o1",
@@ -96,8 +96,8 @@ fn all_serialized_contracts_carry_schema_version() {
     let intent = ExecutionIntent::new(
         "i1",
         "demo.verify",
-        agentic_core::Subject::new("task", "t1"),
-        agentic_core::RequestedBy::new("rules", "p1"),
+        ictus_core::Subject::new("task", "t1"),
+        ictus_core::RequestedBy::new("rules", "p1"),
     );
     let result = ExecutionResult::new(
         "e1",
@@ -150,8 +150,8 @@ fn deny_decision_cannot_carry_an_intent() {
     policy_decision.modified_intent = Some(ExecutionIntent::new(
         "i1",
         "demo.verify",
-        agentic_core::Subject::new("task", "t1"),
-        agentic_core::RequestedBy::new("rules", "p1"),
+        ictus_core::Subject::new("task", "t1"),
+        ictus_core::RequestedBy::new("rules", "p1"),
     ));
     assert!(policy_decision.validate().is_err());
 }

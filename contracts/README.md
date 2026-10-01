@@ -6,12 +6,12 @@ adapters may support multiple versions during a migration.
 
 | Contract | Schema | Rust type | Python |
 | --- | --- | --- | --- |
-| StateSnapshot | `state-snapshot.schema.json` | `agentic_core::StateSnapshot` | bridge input |
-| ExecutionObservation | `observation.schema.json` | `agentic_core::ExecutionObservation` | result mapping |
-| DecisionProposal | `proposal.schema.json` | `agentic_core::DecisionProposal` | — |
-| PolicyDecision | `policy-decision.schema.json` | `agentic_core::PolicyDecision` | — |
-| ExecutionIntent | `execution-intent.schema.json` | `agentic_core::ExecutionIntent` | bridge input |
-| ExecutionResult | `execution-result.schema.json` | `agentic_core::ExecutionResult` | bridge output |
+| StateSnapshot | `state-snapshot.schema.json` | `ictus_core::StateSnapshot` | bridge input |
+| ExecutionObservation | `observation.schema.json` | `ictus_core::ExecutionObservation` | result mapping |
+| DecisionProposal | `proposal.schema.json` | `ictus_core::DecisionProposal` | — |
+| PolicyDecision | `policy-decision.schema.json` | `ictus_core::PolicyDecision` | — |
+| ExecutionIntent | `execution-intent.schema.json` | `ictus_core::ExecutionIntent` | bridge input |
+| ExecutionResult | `execution-result.schema.json` | `ictus_core::ExecutionResult` | bridge output |
 
 ## Conventions
 

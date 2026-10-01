@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agentic_dagster.adapters.contracts import SCHEMA_VERSION, validate_result
+from ictus_dagster.adapters.contracts import SCHEMA_VERSION, validate_result
 
 # Generic, execution-side mapping from a failed step to an observation category.
 # Domain-specific failure taxonomies live in domain adapters, never here.

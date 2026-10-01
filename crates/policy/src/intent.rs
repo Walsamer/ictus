@@ -4,8 +4,8 @@
 //! this. The intent is the sole object allowed to cross into the execution
 //! backend.
 
-use agentic_core::{DecisionProposal, ExecutionIntent, RequestedBy, StateSnapshot};
-use agentic_ports::PortError;
+use ictus_core::{DecisionProposal, ExecutionIntent, RequestedBy, StateSnapshot};
+use ictus_ports::PortError;
 
 use crate::validation::validate_proposal;
 
@@ -55,7 +55,7 @@ pub fn build_execution_intent(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agentic_core::{DecisionKind, ProviderMetadata, Subject};
+    use ictus_core::{DecisionKind, ProviderMetadata, Subject};
 
     #[test]
     fn intent_id_is_deterministic_and_references_proposal() {

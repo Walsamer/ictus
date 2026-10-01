@@ -11,12 +11,14 @@ members = [
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.80"
-publish = false
+license = "Apache-2.0"
+repository = "https://github.com/Walsamer/ictus"
+homepage = "https://github.com/Walsamer/ictus"
 
 [workspace.dependencies]
-agentic-core = { path = "crates/core" }
-agentic-policy = { path = "crates/policy" }
-agentic-ports = { path = "crates/ports" }
+ictus-core = { path = "crates/core" }
+ictus-policy = { path = "crates/policy" }
+ictus-ports = { path = "crates/ports" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"

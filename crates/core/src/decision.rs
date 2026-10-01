@@ -129,7 +129,7 @@ impl DecisionProposal {
         )
     }
 
-    /// Structural validation. Semantic/policy checks live in `agentic-policy`.
+    /// Structural validation. Semantic/policy checks live in `ictus-policy`.
     pub fn validate(&self) -> Result<(), ContractError> {
         ContractError::check_version(self.schema_version)?;
         ContractError::require_non_empty("proposal_id", &self.proposal_id)?;

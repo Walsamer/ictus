@@ -11,10 +11,10 @@
 //! - `capability.id` (the capability to re-execute)
 //! - `observation.message` (optional)
 
-use agentic_core::{
+use ictus_core::{
     DecisionKind, DecisionProposal, ObservationCategory, ProviderMetadata, StateSnapshot,
 };
-use agentic_ports::{DecisionProvider, PortError};
+use ictus_ports::{DecisionProvider, PortError};
 
 /// The deterministic rules provider id used in proposal provenance.
 pub const PROVIDER_ID: &str = "rules.v1";
@@ -115,7 +115,7 @@ impl DecisionProvider for RuleDecisionProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agentic_core::{Fact, Subject};
+    use ictus_core::{Fact, Subject};
 
     fn snapshot(category: &str, attempt: i64, budget: i64) -> StateSnapshot {
         StateSnapshot::new(

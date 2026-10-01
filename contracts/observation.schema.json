@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-control.dev/contracts/observation.schema.json",
+  "$id": "https://ictus.dev/contracts/observation.schema.json",
   "title": "ExecutionObservation",
   "description": "A fact produced by execution. Observations are facts, not decisions: choosing retry/decompose/escalate is the decision/policy layer's responsibility.",
   "type": "object",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dagster import Out, op
 
-from agentic_dagster.resources.execution_settings import ExecutionSettings
+from ictus_dagster.resources.execution_settings import ExecutionSettings
 
 
 @op(out=Out(dict))

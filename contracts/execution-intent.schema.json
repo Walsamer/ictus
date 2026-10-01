@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-control.dev/contracts/execution-intent.schema.json",
+  "$id": "https://ictus.dev/contracts/execution-intent.schema.json",
   "title": "ExecutionIntent",
   "description": "The only object allowed to cross into an execution backend. It carries a validated, bounded action and never carries durable workflow state (retries, step state, run persistence belong to the backend).",
   "type": "object",

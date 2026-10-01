@@ -1,166 +1,129 @@
-# Agentic Control
+# Ictus
 
-A small, typed decision-and-policy layer designed to sit above a durable execution engine such as Dagster.
+> **Ictus:** The exact "click" or rebound point in a conductor's gesture where the pulse actually occurs.
 
-The project exists to separate **agentic decision-making** from **reliable execution**.
+Ictus is a typed decision and policy layer for reliable agentic systems, using
+Dagster as the durable execution substrate.
 
-The intended split is:
+Ictus is the point at which observed state becomes an explicit, validated and
+executable decision:
 
 ```text
-Events / System State
-        ↓
-Normalized State Snapshot
-        ↓
-Decision Provider
-(rules / specialized model / LLM / human)
-        ↓
+State / Events
+      ↓
+Decision Provider        (rules / specialized model / LLM / human)
+      ↓
 Typed Proposal
-        ↓
-Policy + Capability Validation
-        ↓
+      ↓
+Ictus Policy + Capability Validation
+      ↓
 Execution Intent
-        ↓
-Dagster
-        ↓
+      ↓
+Dagster                  (durable execution)
+      ↓
 Runtime
-(local processes first, Kubernetes later)
-        ↓
-Domain workloads
-(the testbed first, others later)
+      ↓
+Domain Capability
+```
+
+The responsibility split is deliberate and load-bearing:
+
+```text
+Ictus   = decisions + policy + capability validation
+Dagster = durable execution
 ```
 
 ## Why this project exists
 
-The current personal the testbed system combines several concerns:
+Reliability-critical orchestration — durable run/step state, retries,
+re-execution, dependency progression, persistence and execution observability —
+is expensive to build and maintain correctly. It is also largely generic.
 
-- work-order semantics
-- planning and decomposition
-- worker/provider routing
-- retries and recovery
-- execution state
-- scheduling
-- subprocess lifecycle
-- verification
-- integration
-- promotion
-- observability
-- human escalation
+The decision logic above it is different: what bounded action is being
+proposed, whether it is valid, whether the requested capability exists and is
+permitted, whether human approval is required, and what execution intent should
+be emitted. That layer is small, typed and domain-sensitive.
 
-That has been useful for rapid iteration, but reliability-critical orchestration mechanics are increasingly expensive to maintain as custom code.
+Ictus separates the two:
 
-The goal of this project is to **gradually move generic execution mechanics to Dagster** while keeping a much smaller custom layer responsible for:
+- **Dagster owns durable execution mechanics.**
+- **Ictus owns typed decisions, policy and capability validation.**
+- **Domain systems remain authoritative over their own domain state.**
 
-- typed decisions
-- admission policy
-- capability validation
-- domain-independent recovery proposals
-- model-agnostic decision providers
+A proposal is not yet an action. Every proposal passes through typed validation,
+capability validation, policy validation and (when required) approval before it
+becomes an `ExecutionIntent`. Only a validated intent may reach Dagster.
 
-the testbed remains operational throughout the migration and acts as the first real-world adapter and testbed.
+The architecture was developed against a private software-engineering automation
+testbed, which is expected to become the first domain adapter. No testbed code,
+database or configuration is required to build, test or run Ictus.
 
 ## Design principles
 
 1. **Dagster owns durable execution mechanics.**
-2. **The control layer owns typed decisions and policy.**
+2. **Ictus owns typed decisions and policy.**
 3. **Domain systems remain authoritative over domain-specific state.**
 4. **Decision providers never execute actions directly.**
-5. **The core must not depend on the testbed, a specialized model, a specific LLM, Kubernetes, or enterprise infrastructure.**
+5. **The core must not depend on any particular domain, model provider, runtime or infrastructure.**
 6. **All integrations happen through explicit, versioned contracts and adapters.**
 7. **Migration is incremental and reversible.**
 8. **No second orchestration engine is built in Rust.**
+
+## Ownership boundary
+
+| Concern | Owner |
+| --- | --- |
+| Typed contracts, decisions, capability metadata, execution intents | `ictus-core` / `ictus-policy` |
+| Abstract ports (state, decision, policy, capability, execution, approval) | `ictus-ports` |
+| Transport adapter to the execution backend | `ictus-bridge` |
+| Run state, step state, retries, re-execution, dependencies, persistence, event history | Dagster (`ictus_dagster`) |
+| Domain semantics (domain objects, domain state transitions) | the domain adapter |
+
+**Rust must never** become a workflow engine, scheduler, retry engine, queue or
+durable-state machine. **Dagster must never** decide retry-vs-decompose-vs-escalate,
+authorize capabilities, require approvals, or own domain state transitions — it
+reports facts.
 
 ## Intended users
 
 Initially:
 
-- the private personal the testbed environment
 - local Dagster OSS
-- software-engineering workloads
+- software-engineering automation workloads
+- private domain adapters
 
 Potentially later:
 
-- enterprise Dagster environments
 - data/ML workflows
 - operational automation
 - agentic recovery and diagnostics
-- Kubernetes-backed execution
-
-## Repository role
-
-This repository should contain only the reusable layer:
-
-- typed domain contracts
-- policy validation
-- capability model
-- decision-provider interfaces
-- Dagster adapter/integration
-- examples
-- reference documentation
-
-domain-specific code should remain in the private the testbed repository behind an adapter.
-
-## Suggested high-level repository layout
-
-```text
-agentic-control/
-├── README.md
-├── docs/
-│   ├── PROJECT_DESCRIPTION.md
-│   ├── ARCHITECTURE.md
-│   ├── STATES.md
-│   ├── MIGRATION_PLAN.md
-│   ├── CONTRACTS_AND_BOUNDARIES.md
-│   └── ROADMAP.md
-├── crates/
-│   ├── core/
-│   ├── policy/
-│   └── ports/
-├── python/
-│   └── agentic_dagster/
-├── contracts/
-│   ├── observation.schema.json
-│   ├── proposal.schema.json
-│   ├── execution-intent.schema.json
-│   └── execution-result.schema.json
-├── examples/
-│   ├── local-recovery-demo/
-│   └── dagster-verification-demo/
-└── tests/
-```
-
-## First milestone
-
-The first milestone is deliberately narrow:
-
-> Prove that a generic typed decision can be validated, translated into an execution intent, executed durably through Dagster OSS, and reported back as a structured result — without domain-specific knowledge in the core.
-
-The first real the testbed migration target should be **verification in shadow mode**.
-
----
+- enterprise state providers and model/tool gateways behind adapters
+- container/Kubernetes-backed runtimes
 
 ## Repository layout (as implemented)
 
 ```text
-agentic-control/
+ictus/
 ├── Cargo.toml                 # Rust workspace
 ├── pyproject.toml             # uv-managed Python package (3.12)
+├── LICENSE, NOTICE            # Apache-2.0
 ├── crates/
 │   ├── core/                  # typed, versioned domain contracts
 │   ├── policy/                # deterministic policy + capability validation
 │   ├── ports/                 # abstract ports (StateProvider, DecisionProvider, ...)
-│   └── bridge/                # JSON-over-stdio Dagster bridge + `ac-bridge` binary
-├── python/agentic_dagster/    # Dagster OSS execution backend (durable execution)
+│   └── bridge/                # JSON-over-stdio Dagster bridge + `ictus` binary
+├── python/ictus_dagster/      # Dagster OSS execution backend (durable execution)
 ├── contracts/                 # versioned JSON schemas (schema_version = 1)
 ├── examples/                  # payloads, run configs, demos
 ├── scripts/                   # verify.sh, demo_durable_execution.sh, e2e_rust_dagster.sh
 ├── tests/python/              # pytest suite (contracts, Dagster, bridge, E2E)
-└── docs/                      # architecture (source of truth) + status/decisions
+└── docs/                      # architecture, decisions, implementation status
 ```
 
 ## Getting started
 
 Prerequisites: Rust (stable) and [`uv`](https://docs.astral.sh/uv/) with Python
-3.12. Nothing else, and no the testbed checkout is required.
+3.12. Nothing else is required.
 
 ```bash
 # Rust: format, lint, test
@@ -179,8 +142,8 @@ uv run --frozen pytest -q
 Demonstrations:
 
 ```bash
-./scripts/demo_durable_execution.sh   # M1: persisted failure, retry, re-execution, inspection
-./scripts/e2e_rust_dagster.sh         # M3: StateSnapshot -> Rust policy -> Dagster -> ExecutionResult
+./scripts/demo_durable_execution.sh   # persisted failure, retry, re-execution, run inspection
+./scripts/e2e_rust_dagster.sh         # StateSnapshot -> policy -> Dagster -> ExecutionResult
 ```
 
 ## Rust ↔ Dagster boundary
@@ -192,18 +155,25 @@ changing the domain contracts. Rationale: [`docs/DECISIONS.md`](docs/DECISIONS.m
 
 ```bash
 # The Rust side reads any StateSnapshot on stdin:
-./target/debug/ac-bridge decide --approve < examples/state-snapshot.worker-timeout.json
+./target/debug/ictus decide --approve < examples/state-snapshot.worker-timeout.json
 
 # The Python side is a pure stdio adapter:
-echo '<ExecutionIntent JSON>' | uv run --frozen python -m agentic_dagster.bridge
+echo '<ExecutionIntent JSON>' | uv run --frozen python -m ictus_dagster.bridge
 ```
 
 ## Status
 
-M0–M3 are implemented; M4 (the testbed adapter discovery) and M5 (verification shadow
-mode) are deliberately **not** started. See
-[`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) for what exists,
-state ownership and open items.
+Early (v0.1.0). The generic foundation is implemented:
 
-This repository builds, tests and runs **without** `the control repository`; the testbed
-integration is intentionally deferred to a later, separately-governed phase.
+- typed, versioned contracts and a deterministic policy core (M2)
+- a generic Dagster durable-execution backend with retry/re-execution (M1)
+- a versioned Rust ↔ Dagster bridge (M3)
+
+Domain-adapter runtime integration is deliberately **not** started. See
+[`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) for what exists,
+state ownership and open items, and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
+planned path.
+
+## License
+
+Apache License 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

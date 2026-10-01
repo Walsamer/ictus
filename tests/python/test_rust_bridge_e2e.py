@@ -1,7 +1,7 @@
 """M3 acceptance: the real Rust binary talks to the real Dagster backend.
 
 This is the only test that crosses the language boundary end to end. It runs the
-built ``ac-bridge`` binary, which produces a typed decision, an
+built ``ictus`` binary, which produces a typed decision, an
 ``ExecutionIntent`` and an ``ExecutionResult`` through Dagster. It is skipped
 when the binary has not been built (``cargo test``/``cargo build`` builds it).
 """
@@ -18,11 +18,11 @@ import pytest
 
 from conftest import REPO_ROOT
 
-BRIDGE = REPO_ROOT / "target" / "debug" / "ac-bridge"
+BRIDGE = REPO_ROOT / "target" / "debug" / "ictus"
 
 pytestmark = pytest.mark.skipif(
     not BRIDGE.exists(),
-    reason="ac-bridge not built; run `cargo build -p agentic-bridge` first",
+    reason="ictus not built; run `cargo build -p ictus-bridge` first",
 )
 
 
@@ -32,7 +32,7 @@ def _env(tmp_path: Path) -> dict[str, str]:
     env["DAGSTER_HOME"] = str(tmp_path)
     # Point the Rust boundary at this interpreter's Dagster bridge, avoiding a
     # uv resolution at call time.
-    env["AGENTIC_DAGSTER_BRIDGE_CMD"] = f"{sys.executable} -m agentic_dagster.bridge"
+    env["ICTUS_DAGSTER_BRIDGE_CMD"] = f"{sys.executable} -m ictus_dagster.bridge"
     return env
 
 

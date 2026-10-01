@@ -1,11 +1,11 @@
 //! Abstract ports implemented by adapters.
 //!
-//! This crate depends only on `agentic-core`. It contains **no** concrete
+//! This crate depends only on `ictus-core`. It contains **no** concrete
 //! adapter, transport, provider or domain logic. Adapters (local processes,
 //! Dagster, HTTP, a rules engine, an LLM) implement these traits; the core and
 //! policy layers depend on the traits, never on a concrete adapter.
 
-use agentic_core::{
+use ictus_core::{
     Capability, DecisionProposal, ExecutionIntent, ExecutionResult, PolicyDecision, StateSnapshot,
     Subject,
 };
@@ -28,7 +28,7 @@ pub enum PortError {
     #[error("evidence store failed: {0}")]
     EvidenceFailed(String),
     #[error("contract error: {0}")]
-    Contract(#[from] agentic_core::ContractError),
+    Contract(#[from] ictus_core::ContractError),
     #[error("serialization error: {0}")]
     Serialization(String),
 }
@@ -86,5 +86,5 @@ pub trait ExecutionBackend {
 
 /// Stores/records evidence references.
 pub trait EvidenceStore {
-    fn record(&self, evidence: &agentic_core::EvidenceRef) -> Result<(), PortError>;
+    fn record(&self, evidence: &ictus_core::EvidenceRef) -> Result<(), PortError>;
 }

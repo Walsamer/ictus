@@ -3,8 +3,8 @@
 //! Approvals are the human gate in the trust boundary. The core never assumes
 //! approval; adapters answer whether the required approvals are satisfied.
 
-use agentic_core::DecisionProposal;
-use agentic_ports::ApprovalProvider;
+use ictus_core::DecisionProposal;
+use ictus_ports::ApprovalProvider;
 
 /// Denies every proposal approval. Safe default.
 #[derive(Debug, Clone, Copy, Default)]

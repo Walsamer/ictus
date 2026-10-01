@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-control.dev/contracts/policy-decision.schema.json",
+  "$id": "https://ictus.dev/contracts/policy-decision.schema.json",
   "title": "PolicyDecision",
   "description": "The result of validating a DecisionProposal. A DENY decision must never carry an ExecutionIntent and must never reach the execution backend.",
   "type": "object",

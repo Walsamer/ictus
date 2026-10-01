@@ -3,18 +3,18 @@
 version = 3
 
 [[package]]
-name = "agentic-bridge"
+name = "ictus-bridge"
 version = "0.1.0"
 dependencies = [
- "agentic-core",
- "agentic-policy",
- "agentic-ports",
+ "ictus-core",
+ "ictus-policy",
+ "ictus-ports",
  "serde_json",
  "thiserror",
 ]
 
 [[package]]
-name = "agentic-core"
+name = "ictus-core"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -23,20 +23,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "agentic-policy"
+name = "ictus-policy"
 version = "0.1.0"
 dependencies = [
- "agentic-core",
- "agentic-ports",
+ "ictus-core",
+ "ictus-ports",
  "serde_json",
  "thiserror",
 ]
 
 [[package]]
-name = "agentic-ports"
+name = "ictus-ports"
 version = "0.1.0"
 dependencies = [
- "agentic-core",
+ "ictus-core",
  "thiserror",
 ]
 

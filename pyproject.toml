@@ -1,22 +1,29 @@
 [project]
-name = "agentic-control"
+name = "ictus"
 version = "0.1.0"
-description = "Typed agentic decision-and-policy layer above a durable execution engine (Dagster)."
+description = "Typed decision and policy layer for agentic systems, with Dagster as the durable execution substrate."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12,<3.13"
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "dagster>=1.8,<2",
 ]
 
 [project.scripts]
-agentic-bridge = "agentic_dagster.bridge:main"
+ictus-bridge = "ictus_dagster.bridge:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["python/agentic_dagster"]
+packages = ["python/ictus_dagster"]
 
 [dependency-groups]
 dev = [

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-control.dev/contracts/state-snapshot.schema.json",
+  "$id": "https://ictus.dev/contracts/state-snapshot.schema.json",
   "title": "StateSnapshot",
   "description": "Normalized, domain-neutral state visible to a DecisionProvider. Produced by a StateProvider adapter; must not expose internal database models.",
   "type": "object",

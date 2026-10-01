@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agentic_dagster.adapters.intent_config import (
+from ictus_dagster.adapters.intent_config import (
     UnsupportedCapability,
     settings_from_intent,
 )

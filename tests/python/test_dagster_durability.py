@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dagster import DagsterInstance
 
-from agentic_dagster.jobs.capability_job import capability_execution_job
-from agentic_dagster.resources.execution_settings import ExecutionSettings
+from ictus_dagster.jobs.capability_job import capability_execution_job
+from ictus_dagster.resources.execution_settings import ExecutionSettings
 
 
 def _run(**settings):

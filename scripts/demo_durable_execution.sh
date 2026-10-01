@@ -18,7 +18,7 @@ echo "DAGSTER_HOME=$DAGSTER_HOME"
 
 run() {
     uv run --frozen dagster job execute \
-        -m agentic_dagster.definitions -j capability_execution_job \
+        -m ictus_dagster.definitions -j capability_execution_job \
         --config "$1"
 }
 

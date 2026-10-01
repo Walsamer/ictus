@@ -10,9 +10,9 @@ import sys
 import pytest
 from dagster import DagsterInstance
 
-from agentic_dagster import bridge
-from agentic_dagster.adapters.contracts import ContractError
-from agentic_dagster.adapters.intent_config import UnsupportedCapability
+from ictus_dagster import bridge
+from ictus_dagster.adapters.contracts import ContractError
+from ictus_dagster.adapters.intent_config import UnsupportedCapability
 
 
 def _intent(capability: str = "demo.verify", arguments: dict | None = None) -> dict:
@@ -55,7 +55,7 @@ def test_bridge_subprocess_writes_pure_json_to_stdout(tmp_path) -> None:
     env["DAGSTER_HOME"] = str(tmp_path)
     (tmp_path / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
     proc = subprocess.run(
-        [sys.executable, "-m", "agentic_dagster.bridge"],
+        [sys.executable, "-m", "ictus_dagster.bridge"],
         input=json.dumps(_intent()),
         capture_output=True,
         text=True,
@@ -73,7 +73,7 @@ def test_bridge_subprocess_exit_code_4_on_failure(tmp_path) -> None:
     env["DAGSTER_HOME"] = str(tmp_path)
     (tmp_path / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
     proc = subprocess.run(
-        [sys.executable, "-m", "agentic_dagster.bridge"],
+        [sys.executable, "-m", "ictus_dagster.bridge"],
         input=json.dumps(_intent(arguments={"fail_hard": True})),
         capture_output=True,
         text=True,
@@ -86,7 +86,7 @@ def test_bridge_subprocess_exit_code_4_on_failure(tmp_path) -> None:
 
 def test_bridge_rejects_an_invalid_intent() -> None:
     proc = subprocess.run(
-        [sys.executable, "-m", "agentic_dagster.bridge"],
+        [sys.executable, "-m", "ictus_dagster.bridge"],
         input='{"schema_version": 1}',
         capture_output=True,
         text=True,

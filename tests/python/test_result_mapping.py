@@ -9,8 +9,8 @@ import pytest
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
-from agentic_dagster.adapters.contracts import ContractError, validate_result
-from agentic_dagster.adapters.result_mapping import execution_result_from_run
+from ictus_dagster.adapters.contracts import ContractError, validate_result
+from ictus_dagster.adapters.result_mapping import execution_result_from_run
 from conftest import CONTRACTS_DIR
 
 

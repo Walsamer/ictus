@@ -1,4 +1,4 @@
-//! `ac-bridge` — command-line entry point for the generic
+//! `ictus` — command-line entry point for the generic
 //! `StateSnapshot -> proposal -> policy -> ExecutionIntent -> ExecutionResult`
 //! flow, and for the Rust side of the JSON-over-stdio Dagster boundary.
 //!
@@ -20,21 +20,21 @@
 use std::io::Read;
 use std::process::ExitCode;
 
-use agentic_bridge::JsonStdioBackend;
-use agentic_core::{Capability, DecisionProposal, ExecutionIntent, RiskClass, StateSnapshot};
-use agentic_policy::{
+use ictus_bridge::JsonStdioBackend;
+use ictus_core::{Capability, DecisionProposal, ExecutionIntent, RiskClass, StateSnapshot};
+use ictus_policy::{
     AlwaysApproved, DefaultPolicyEvaluator, InMemoryCapabilityRegistry, NeverApproved,
     RuleDecisionProvider,
 };
-use agentic_ports::{DecisionProvider, ExecutionBackend, PolicyEvaluator};
+use ictus_ports::{DecisionProvider, ExecutionBackend, PolicyEvaluator};
 
 const USAGE: &str = "\
-ac-bridge — typed decision/policy core + Dagster execution bridge
+ictus — typed decision/policy core + Dagster execution bridge
 
 USAGE:
-    ac-bridge decide  [--approve] [--capabilities <file.json>]   # snapshot JSON on stdin
-    ac-bridge execute                                            # intent JSON on stdin
-    ac-bridge flow    [--approve] [--capabilities <file.json>]   # snapshot JSON on stdin
+    ictus decide  [--approve] [--capabilities <file.json>]   # snapshot JSON on stdin
+    ictus execute                                            # intent JSON on stdin
+    ictus flow    [--approve] [--capabilities <file.json>]   # snapshot JSON on stdin
 ";
 
 /// Built-in generic demo capabilities. A real deployment loads these from a
@@ -97,7 +97,7 @@ fn parse_flags(args: &[String]) -> Result<(bool, Option<String>), String> {
 fn propose_and_evaluate(
     approve: bool,
     capabilities_path: Option<&str>,
-) -> Result<(DecisionProposal, agentic_core::PolicyDecision), String> {
+) -> Result<(DecisionProposal, ictus_core::PolicyDecision), String> {
     let raw = read_stdin()?;
     let snapshot: StateSnapshot =
         serde_json::from_str(&raw).map_err(|e| format!("invalid StateSnapshot JSON: {e}"))?;
@@ -134,7 +134,7 @@ fn run_decide(args: &[String]) -> Result<ExitCode, String> {
     let intent = policy_decision.modified_intent.clone();
     let executable = policy_decision.is_executable();
     print_json(&serde_json::json!({
-        "schema_version": agentic_core::SCHEMA_VERSION,
+        "schema_version": ictus_core::SCHEMA_VERSION,
         "proposal": proposal,
         "policy_decision": policy_decision,
         "execution_intent": intent,
@@ -165,7 +165,7 @@ fn run_flow(args: &[String]) -> Result<ExitCode, String> {
     let (proposal, policy_decision) = propose_and_evaluate(approve, capabilities.as_deref())?;
 
     let mut trace = serde_json::json!({
-        "schema_version": agentic_core::SCHEMA_VERSION,
+        "schema_version": ictus_core::SCHEMA_VERSION,
         "proposal": proposal,
         "policy_decision": policy_decision,
     });

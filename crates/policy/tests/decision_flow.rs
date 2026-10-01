@@ -1,16 +1,16 @@
 //! End-to-end decision flow (M2 acceptance).
 //!
 //! A synthesized observation produces a typed proposal, a deterministic policy
-//! decision and an execution intent — with no Dagster and no the testbed knowledge.
+//! decision and an execution intent — with no Dagster and no domain-system knowledge.
 
-use agentic_core::{
+use ictus_core::{
     DecisionKind, Fact, ObservationCategory, PolicyDecisionKind, StateSnapshot, Subject,
 };
-use agentic_policy::{
+use ictus_policy::{
     AlwaysApproved, DefaultPolicyEvaluator, InMemoryCapabilityRegistry, NeverApproved,
     RuleDecisionProvider,
 };
-use agentic_ports::{DecisionProvider, PolicyEvaluator};
+use ictus_ports::{DecisionProvider, PolicyEvaluator};
 
 fn recovery_snapshot(category: &str, attempt: i64, budget: i64) -> StateSnapshot {
     StateSnapshot::new(
@@ -27,7 +27,7 @@ fn recovery_snapshot(category: &str, attempt: i64, budget: i64) -> StateSnapshot
 }
 
 fn registry() -> InMemoryCapabilityRegistry {
-    use agentic_core::{Capability, RiskClass};
+    use ictus_core::{Capability, RiskClass};
     InMemoryCapabilityRegistry::new()
         .with(Capability::new("demo.verify", "1", RiskClass::Low).with_idempotent(true))
 }
@@ -93,7 +93,7 @@ fn exhausted_budget_escalates_and_never_executes() {
 
 #[test]
 fn approval_required_path_is_not_executable_until_approved() {
-    use agentic_core::{Capability, RiskClass};
+    use ictus_core::{Capability, RiskClass};
     let snapshot = recovery_snapshot("WORKER_TIMEOUT", 0, 2);
     let proposal = RuleDecisionProvider::new().propose(&snapshot).unwrap();
     let registry = InMemoryCapabilityRegistry::new()

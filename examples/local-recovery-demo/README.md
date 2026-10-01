@@ -1,7 +1,7 @@
 # Local recovery demo
 
 A self-contained demonstration of the generic decision/policy flow **without**
-Dagster and **without** the testbed:
+Dagster and **without** any domain system:
 
 ```text
 StateSnapshot (WORKER_TIMEOUT)
@@ -12,8 +12,8 @@ StateSnapshot (WORKER_TIMEOUT)
 Run it with the CLI, which reads a snapshot on stdin and prints the typed trace:
 
 ```bash
-cargo build -p agentic-bridge
-./target/debug/ac-bridge decide --approve < ../../examples/state-snapshot.worker-timeout.json
+cargo build -p ictus-bridge
+./target/debug/ictus decide --approve < ../../examples/state-snapshot.worker-timeout.json
 ```
 
 Each fact the rules provider consults is domain-neutral:

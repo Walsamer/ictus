@@ -19,8 +19,8 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use agentic_core::{ExecutionIntent, ExecutionResult};
-use agentic_ports::{ExecutionBackend, PortError};
+use ictus_core::{ExecutionIntent, ExecutionResult};
+use ictus_ports::{ExecutionBackend, PortError};
 
 /// An `ExecutionBackend` that sends one `ExecutionIntent` as JSON on the child
 /// process's stdin and reads one `ExecutionResult` as JSON from its stdout.
@@ -38,14 +38,14 @@ impl JsonStdioBackend {
         }
     }
 
-    /// Resolve the backend command from `AGENTIC_DAGSTER_BRIDGE_CMD`, falling
-    /// back to `uv run --frozen python -m agentic_dagster.bridge`.
+    /// Resolve the backend command from `ICTUS_DAGSTER_BRIDGE_CMD`, falling
+    /// back to `uv run --frozen python -m ictus_dagster.bridge`.
     ///
     /// The command is intentionally overridable so the same Rust boundary can
     /// drive a different (e.g. enterprise) adapter without a code change.
     pub fn from_env() -> Self {
-        let raw = std::env::var("AGENTIC_DAGSTER_BRIDGE_CMD")
-            .unwrap_or_else(|_| "uv run --frozen python -m agentic_dagster.bridge".to_string());
+        let raw = std::env::var("ICTUS_DAGSTER_BRIDGE_CMD")
+            .unwrap_or_else(|_| "uv run --frozen python -m ictus_dagster.bridge".to_string());
         let mut parts = raw.split_whitespace();
         let program = parts.next().unwrap_or("uv").to_string();
         let args = parts.map(str::to_string).collect();

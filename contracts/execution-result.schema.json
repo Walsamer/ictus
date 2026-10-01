@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-control.dev/contracts/execution-result.schema.json",
+  "$id": "https://ictus.dev/contracts/execution-result.schema.json",
   "title": "ExecutionResult",
   "description": "The bounded result returned by an execution backend for one ExecutionIntent. It reports facts; it is not a durable workflow state record.",
   "type": "object",

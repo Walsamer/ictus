@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 # Capabilities this generic backend knows how to execute. Deliberately generic;
-# no domain system (e.g. the testbed) is referenced here.
+# no domain system (e.g. a domain system) is referenced here.
 SUPPORTED_CAPABILITIES = {
     "demo.verify",
     "software.verify",

@@ -3,8 +3,8 @@
 //! The registry is data (a set of `Capability` records). It answers questions
 //! only; it never executes anything.
 
-use agentic_core::Capability;
-use agentic_ports::CapabilityRegistry;
+use ictus_core::Capability;
+use ictus_ports::CapabilityRegistry;
 
 /// A deterministic, in-memory capability registry.
 #[derive(Debug, Clone, Default)]
@@ -44,7 +44,7 @@ impl CapabilityRegistry for InMemoryCapabilityRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agentic_core::RiskClass;
+    use ictus_core::RiskClass;
 
     #[test]
     fn registry_finds_known_capability() {

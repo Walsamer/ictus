@@ -7,10 +7,10 @@
 //! Determinism: the decision timestamp is derived from the proposal's
 //! `proposed_at`, so the same inputs always produce the same decision record.
 
-use agentic_core::{
+use ictus_core::{
     DecisionKind, DecisionProposal, PolicyDecision, PolicyDecisionKind, RiskClass, StateSnapshot,
 };
-use agentic_ports::{ApprovalProvider, CapabilityRegistry, PolicyEvaluator, PortError};
+use ictus_ports::{ApprovalProvider, CapabilityRegistry, PolicyEvaluator, PortError};
 
 use crate::{intent::build_execution_intent, validation::validate_capability};
 
@@ -44,7 +44,7 @@ impl PolicyEvaluator for DefaultPolicyEvaluator {
         if let Err(error) = proposal.validate() {
             return Ok(decision.with_reason(format!("invalid proposal: {error}")));
         }
-        if snapshot.schema_version != agentic_core::SCHEMA_VERSION {
+        if snapshot.schema_version != ictus_core::SCHEMA_VERSION {
             return Ok(decision.with_reason("unsupported snapshot schema_version"));
         }
 
@@ -120,7 +120,7 @@ impl PolicyEvaluator for DefaultPolicyEvaluator {
 mod tests {
     use super::*;
     use crate::registry::InMemoryCapabilityRegistry;
-    use agentic_core::{ProviderMetadata, Subject};
+    use ictus_core::{ProviderMetadata, Subject};
 
     fn snapshot() -> StateSnapshot {
         StateSnapshot::new(
@@ -144,7 +144,7 @@ mod tests {
     }
 
     fn registry() -> InMemoryCapabilityRegistry {
-        InMemoryCapabilityRegistry::new().with(agentic_core::Capability::new(
+        InMemoryCapabilityRegistry::new().with(ictus_core::Capability::new(
             "demo.verify",
             "1",
             RiskClass::Low,
@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn high_risk_capability_requires_approval_then_allows() {
         let evaluator = DefaultPolicyEvaluator::new();
-        let registry = InMemoryCapabilityRegistry::new().with(agentic_core::Capability::new(
+        let registry = InMemoryCapabilityRegistry::new().with(ictus_core::Capability::new(
             "software.promote",
             "1",
             RiskClass::High,
@@ -218,8 +218,8 @@ mod tests {
     fn retry_budget_is_enforced() {
         let evaluator = DefaultPolicyEvaluator::new();
         let snapshot = snapshot()
-            .with_fact(agentic_core::Fact::integer("retry.attempt", 2))
-            .with_fact(agentic_core::Fact::integer("retry.budget", 2));
+            .with_fact(ictus_core::Fact::integer("retry.attempt", 2))
+            .with_fact(ictus_core::Fact::integer("retry.budget", 2));
         let decision = evaluator
             .evaluate(
                 &snapshot,

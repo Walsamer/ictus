@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dagster import Failure, In, Out, op
 
-from agentic_dagster.resources.execution_settings import ExecutionSettings
+from ictus_dagster.resources.execution_settings import ExecutionSettings
 
 
 @op(ins={"executed": In(dict)}, out=Out(dict))

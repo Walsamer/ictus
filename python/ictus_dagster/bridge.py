@@ -19,14 +19,14 @@ from typing import Any
 
 from dagster import DagsterInstance
 
-from agentic_dagster.adapters.contracts import ContractError, validate_intent
-from agentic_dagster.adapters.intent_config import (
+from ictus_dagster.adapters.contracts import ContractError, validate_intent
+from ictus_dagster.adapters.intent_config import (
     UnsupportedCapability,
     settings_from_intent,
 )
-from agentic_dagster.adapters.result_mapping import execution_result_from_run
-from agentic_dagster.jobs.capability_job import capability_execution_job
-from agentic_dagster.resources.execution_settings import ExecutionSettings
+from ictus_dagster.adapters.result_mapping import execution_result_from_run
+from ictus_dagster.jobs.capability_job import capability_execution_job
+from ictus_dagster.resources.execution_settings import ExecutionSettings
 
 
 def _now() -> str:
@@ -65,9 +65,9 @@ def execute_intent(
             instance=dagster_instance,
             raise_on_error=False,
             tags={
-                "agentic.intent_id": payload["intent_id"],
-                "agentic.capability": payload["capability"],
-                "agentic.schema_version": str(payload["schema_version"]),
+                "ictus.intent_id": payload["intent_id"],
+                "ictus.capability": payload["capability"],
+                "ictus.schema_version": str(payload["schema_version"]),
             },
         )
     finished_at = _now()

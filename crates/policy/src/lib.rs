@@ -1,8 +1,8 @@
 //! Deterministic policy, capability validation and rule-based decisions.
 //!
-//! This crate implements the abstract ports from `agentic-ports` with
+//! This crate implements the abstract ports from `ictus-ports` with
 //! deterministic, model-agnostic behaviour. It has no dependency on Dagster,
-//! the testbed, a transport, an LLM or any infrastructure.
+//! any domain system, a transport, an LLM or any infrastructure.
 //!
 //! Flow:
 //!

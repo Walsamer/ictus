@@ -6,9 +6,9 @@
 
 use std::path::PathBuf;
 
-use agentic_bridge::JsonStdioBackend;
-use agentic_core::{ExecutionIntent, ExecutionStatus, ObservationCategory, RequestedBy, Subject};
-use agentic_ports::ExecutionBackend;
+use ictus_bridge::JsonStdioBackend;
+use ictus_core::{ExecutionIntent, ExecutionStatus, ObservationCategory, RequestedBy, Subject};
+use ictus_ports::ExecutionBackend;
 
 fn fixture(name: &str) -> String {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

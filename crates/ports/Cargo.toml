@@ -1,11 +1,12 @@
 [package]
-name = "agentic-ports"
+name = "ictus-ports"
 description = "Abstract ports (traits) implemented by adapters; depend on domain only."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
-agentic-core = { workspace = true }
+ictus-core = { workspace = true }
 thiserror = { workspace = true }
