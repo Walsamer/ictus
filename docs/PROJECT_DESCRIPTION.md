@@ -2,7 +2,7 @@
 
 ## Problem
 
-The current the testbed system is an effective autonomous software-engineering orchestration environment, but it currently owns too many reliability-critical concerns itself.
+The current testbed is an effective autonomous software-engineering orchestration environment, but it currently owns too many reliability-critical concerns itself.
 
 Examples include:
 
@@ -50,7 +50,7 @@ This project is **not**:
 - a replacement for the testbed's domain semantics
 - an LLM framework
 - a hard dependency on a specialized model
-- a the testbed rewrite
+- a testbed rewrite
 - a vendor-specific product
 
 ## Core idea
@@ -88,11 +88,11 @@ Questions:
 
 ### 3. Domain semantics
 
-Owned by domain adapters such as the testbed.
+Owned by domain adapters.
 
 Questions:
 
-- What is a Work Order?
+- What is a domain work item?
 - What project does it belong to?
 - What counts as a valid software verification?
 - What does promotion mean?
@@ -108,7 +108,7 @@ Any of the following may produce the same typed proposal:
 
 ```text
 Deterministic Rules
-Specialized Model / specialized Model
+Specialized Model / Specialized Model
 LLM
 Human
 ```
@@ -172,11 +172,11 @@ Locally, this project uses Dagster OSS.
 
 In a enterprise environment, the same concepts could map to Dagster+ while keeping the decision/policy layer unchanged.
 
-## Why the testbed remains important
+## Why the first domain adapter matters
 
-the testbed is not discarded.
+The testbed is not discarded.
 
-the testbed provides:
+The testbed provides:
 
 - the first real domain adapter
 - real failure modes
@@ -194,13 +194,13 @@ That makes the testbed an excellent pressure-test environment for the new archit
 The migration target is:
 
 ```text
-the testbed today:
+The testbed today:
 custom orchestration + policy + agents + recovery + execution
 
 Target:
 Rust = typed decisions and policy
 Dagster = durable execution
-the testbed = software-engineering domain/capability adapter
+The testbed = software-engineering domain/capability adapter
 ```
 
 ## Long-term portability
@@ -210,10 +210,10 @@ The core should be reusable by replacing adapters.
 Personal environment:
 
 ```text
-the testbed adapter
+Domain adapter
 Local Dagster OSS
 Local process runtime
-agent harness / agent harness workers
+Local agent workers
 Local policies
 ```
 

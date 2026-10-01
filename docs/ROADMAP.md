@@ -32,7 +32,7 @@ Create a clean public-style repository.
 
 ## Do not
 
-- connect to the testbed yet
+- connect to any domain adapter yet
 - add Kubernetes
 - add LLMs
 - add a specialized model
@@ -132,9 +132,9 @@ works locally.
 
 ---
 
-# Session 5 — the testbed adapter discovery
+# Session 5 — domain adapter discovery
 
-This session happens primarily in the private the testbed repository.
+This session happens primarily in a private domain repository.
 
 ## Goal
 
@@ -154,7 +154,7 @@ Do not implement until these are explicit.
 
 ---
 
-# Session 6 — the testbed verification shadow mode
+# Session 6 — domain verification shadow mode
 
 ## Goal
 
@@ -163,7 +163,7 @@ Run native and Dagster verification side by side.
 ## Rules
 
 - native remains authoritative
-- Dagster cannot mutate the testbed state
+- Dagster cannot mutate domain state
 - mismatches are recorded
 - Dagster failure must not break native path
 
@@ -181,7 +181,7 @@ Only after shadow evidence is good.
 
 Dagster becomes authoritative for executing verification.
 
-the testbed remains authoritative for interpreting the result and changing the testbed state.
+The testbed remains authoritative for interpreting the result and changing its own domain state.
 
 ---
 
@@ -189,7 +189,7 @@ the testbed remains authoritative for interpreting the result and changing the t
 
 ## Goal
 
-Feed real the testbed observations into the Rust decision layer.
+Feed real domain observations into the Rust decision layer.
 
 Start with one simple class:
 
@@ -200,7 +200,7 @@ WORKER_TIMEOUT
 Compare:
 
 ```text
-legacy the testbed decision
+legacy domain decision
 vs
 new typed decision
 ```
@@ -274,7 +274,7 @@ TASK_TOO_COMPLEX
 
 into the generic decision model.
 
-the testbed may remain the implementation of child-task creation initially.
+The testbed may remain the implementation of child-task creation initially.
 
 ---
 
@@ -298,7 +298,7 @@ Do not duplicate authority.
 
 ---
 
-# Session 14 — remove redundant the testbed execution code
+# Session 14 — remove redundant execution code from the testbed
 
 Delete only code proven redundant.
 
@@ -326,7 +326,7 @@ Do not redesign the core.
 
 # Session 16 — portability demonstration
 
-Create a second non-the testbed example domain.
+Create a second example domain.
 
 For example:
 
@@ -352,7 +352,7 @@ The purpose is to prove the project is genuinely generic.
 
 ## v0.2
 
-- first real the testbed adapter proven privately
+- first real domain adapter proven privately
 - verification workflow stable
 - stronger audit/evidence contracts
 

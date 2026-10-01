@@ -13,9 +13,9 @@ project's own record; they do not modify the supplied architecture documents in
   diagnostics go to stderr.
 - **Portability:** the contracts (`contracts/*.schema.json`) are
   transport-independent. Moving to HTTP/gRPC later changes only the adapter
-  (`agentic-bridge`) and the Python `bridge.py`, never the domain contracts.
+  (`ictus-bridge`) and the Python `bridge.py`, never the domain contracts.
 - **Enforced by:** `crates/bridge` (`JsonStdioBackend`),
-  `python/agentic_dagster/bridge.py`, and `tests/python/test_bridge.py`.
+  `python/ictus_dagster/bridge.py`, and `tests/python/test_bridge.py`.
 
 ## DEC-002 — Python is pinned to 3.12 and managed by `uv`
 
@@ -29,7 +29,7 @@ project's own record; they do not modify the supplied architecture documents in
 
 - **Decision:** the supplied layout (`core`, `policy`, `ports`) is kept, plus a
   fourth crate `crates/bridge` holding the Dagster transport adapter and the
-  `ac-bridge` binary.
+  `ictus` binary.
 - **Why:** `ports` stays a pure trait crate (no transport, no process spawn) and
   `core`/`policy` stay free of adapters. This preserves the dependency
   direction `core <- policy <- adapters` instead of putting a concrete adapter
@@ -42,7 +42,7 @@ project's own record; they do not modify the supplied architecture documents in
 - **Why:** resource state did not survive retries when the resource was
   configured from run config, and keeping retry state in application code would
   duplicate a concern Dagster owns. `context.retry_number` is authoritative.
-- **Enforced by:** `python/agentic_dagster/ops/execute.py`,
+- **Enforced by:** `python/ictus_dagster/ops/execute.py`,
   `tests/python/test_dagster_durability.py`.
 
 ## DEC-005 — serialization conventions follow the documented examples
@@ -54,12 +54,30 @@ project's own record; they do not modify the supplied architecture documents in
 - **Enforced by:** `crates/core/tests/contracts_json.rs`,
   `tests/python/test_contracts_schemas.py`.
 
+## DEC-006 — the project is named Ictus and licensed Apache-2.0
+
+- **Decision:** the project/repository name is **Ictus** (`ictus`); Rust crates
+  are `ictus-core` / `ictus-policy` / `ictus-ports` / `ictus-bridge`, the Python
+  package is `ictus_dagster`, and the CLI/binary is `ictus`. The project is
+  licensed under Apache License 2.0 (`LICENSE`, `NOTICE`, SPDX
+  `Apache-2.0`).
+- **Why:** the previous working name (`agentic-control`) was a
+  placeholder; `Ictus` names the exact point at which observed state becomes a
+  validated, executable decision. Contract semantics and `schema_version` are
+  unchanged: a project rename is not a wire-format change.
+- **Explicitly not renamed:** the generic contract types (`StateSnapshot`,
+  `ExecutionObservation`, `DecisionProposal`, `PolicyDecision`, `Capability`,
+  `ExecutionIntent`, `ExecutionResult`) and `schema_version`.
+
 ## Open decisions (not yet made)
 
-- **License.** No `LICENSE` file is committed yet, and the Cargo workspace is
-  marked `publish = false`. A license must be chosen before any publication.
+- **License holder scope.** Apache-2.0 is adopted with the copyright holder
+  `Samuel Eder` (an individual, not a company). Revisit if ownership changes.
 - **Capability registry persistence.** Capabilities are currently supplied
   programmatically / from a JSON file (`--capabilities`), not served by a
   registry service.
-- **the testbed integration boundary.** Deliberately out of scope for M0–M3; see
-  `docs/IMPLEMENTATION_STATUS.md`.
+- **Domain-adapter integration boundary.** Deliberately out of scope for the
+  current milestone; see `docs/IMPLEMENTATION_STATUS.md`.
+- **Crates.io publication.** Crates publish `license`/`repository` metadata but
+  have never been published; inter-crate dependencies would need versions and a
+  registry strategy first.

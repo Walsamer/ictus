@@ -6,7 +6,7 @@
                     ┌────────────────────────────┐
                     │   Event / State Sources    │
                     │                            │
-                    │ the testbed / data / diagnostics │
+                    │ testbed / data / diagnostics │
                     └─────────────┬──────────────┘
                                   │
                                   ▼
@@ -267,17 +267,17 @@ Personal:
 ```text
 TestbedStateProvider
 RuleDecisionProvider
-JevDecisionProvider
+SpecializedModelDecisionProvider
 LlmDecisionProvider
 HumanDecisionProvider
 DagsterOssExecutionBackend
 LocalRuntimeAdapter
 ```
 
-Possible enterprise:
+Possible enterprise adapters:
 
 ```text
-TestbedStateProvider
+EnterpriseStateProvider
 EnterprisePolicyAdapter
 ApprovedModelDecisionProvider
 DagsterPlusExecutionBackend
@@ -304,14 +304,14 @@ The contract must be understandable independently of either implementation.
 ## 10. Suggested repository layout
 
 ```text
-agentic-control/
+ictus/
 ├── Cargo.toml
 ├── crates/
 │   ├── core/
 │   ├── policy/
 │   └── ports/
 ├── python/
-│   └── agentic_dagster/
+│   └── ictus_dagster/
 │       ├── definitions.py
 │       ├── jobs/
 │       ├── ops/

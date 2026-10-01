@@ -23,7 +23,7 @@ No large-bang rewrite.
 
 ## Goal
 
-Create a clean, publishable repository with no the testbed dependency.
+Create a clean, publishable repository with no testbed dependency.
 
 ## Deliverables
 
@@ -131,25 +131,25 @@ prepare
 
 ---
 
-# Milestone 3 — the testbed verification shadow integration
+# Milestone 3 — domain verification shadow integration
 
 ## Goal
 
-Connect the private the testbed repository as the first real adapter.
+Connect a private domain repository as the first real adapter.
 
-This work primarily happens in the testbed, not in the public core repository.
+This work primarily happens in the domain adapter, not in the public core repository.
 
 ## Flow
 
 ```text
-the testbed run
+a domain run
    ├── native verifier → authoritative
    └── Dagster verifier → shadow
 ```
 
 ## Data captured
 
-- the testbed run ID
+- a domain run ID
 - Dagster run ID
 - native result
 - Dagster result
@@ -160,8 +160,8 @@ the testbed run
 
 ## Acceptance criteria
 
-- no Dagster result can mutate the testbed state
-- Dagster unavailable does not break native the testbed verification
+- no Dagster result can mutate testbed state
+- Dagster unavailable does not break native verification
 - comparison report exists
 - rollback requires configuration only
 
@@ -173,22 +173,22 @@ the testbed run
 
 Move execution authority for verification to Dagster.
 
-the testbed remains authoritative over the testbed state.
+The testbed remains authoritative over its own domain state.
 
 ## Flow
 
 ```text
-the testbed requests verification
+The testbed requests verification
 → Dagster executes
 → structured result
-→ the testbed validates
-→ the testbed updates domain state
+→ the domain adapter validates
+→ the testbed updates its domain state
 ```
 
 ## Acceptance criteria
 
 - native path still available as fallback
-- the testbed state transitions remain domain-owned
+- domain state transitions remain domain-owned
 - no duplicate completion possible
 - run/result correlation is explicit
 
@@ -198,7 +198,7 @@ the testbed requests verification
 
 ## Goal
 
-Use real the testbed observations to test the new decision layer.
+Use real domain observations to test the new decision layer.
 
 ## Example observations
 
@@ -212,7 +212,7 @@ Use real the testbed observations to test the new decision layer.
 
 ```text
 Observation
-├── the testbed legacy decision
+├── legacy domain decision
 └── Rust decision provider
       ↓
 compare
@@ -257,7 +257,7 @@ Suggested order:
 
 ## Goal
 
-Move a complete selected the testbed execution lifecycle under Dagster.
+Move one complete selected domain execution lifecycle under Dagster.
 
 Possible graph:
 
@@ -321,7 +321,7 @@ Examples:
 
 ---
 
-# Milestone 9 — generic the testbed execution removal
+# Milestone 9 — remove generic execution code from the domain adapter
 
 ## Goal
 
@@ -372,7 +372,7 @@ Runtime isolation is orthogonal to decision policy.
 
 ## Goal
 
-Prove that the core can map to a non-the testbed environment.
+Prove that the core can map to a non-testbed environment.
 
 Create a mock enterprise adapter rather than coupling to real enterprise infrastructure.
 

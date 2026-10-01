@@ -162,7 +162,7 @@ StateSnapshot
 Implementations:
 
 - deterministic rules
-- specialized specialized model
+- specialized decision model
 - LLM
 - human
 
@@ -255,7 +255,7 @@ Dagster may report:
 verification workflow succeeded
 ```
 
-the testbed may still decide:
+The testbed may still decide:
 
 ```text
 WO is not complete because integration evidence is missing
@@ -347,9 +347,9 @@ Secrets belong to runtime-specific secret handling.
 
 ---
 
-# 8. domain-specific mapping examples
+# 8. Domain-specific mapping examples
 
-Private the testbed adapter may translate:
+A private domain adapter may translate:
 
 ```text
 VALIDATION_VERIFIER_FAILURE
@@ -359,17 +359,17 @@ VALIDATION_VERIFIER_FAILURE
 or:
 
 ```text
-WO status READY
+domain work item status READY
 → domain fact task.runnable_candidate=true
 ```
 
-These mappings belong in the testbed, not in the generic core.
+These mappings belong in the domain adapter, not in the generic core.
 
 ---
 
-# 9. enterprise portability rule
+# 9. Enterprise portability rule
 
-Do not add concepts to the core solely because enterprise uses them.
+Do not add concepts to the core solely because one enterprise uses them.
 
 For example, the core should not contain:
 

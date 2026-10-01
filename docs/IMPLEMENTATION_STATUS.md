@@ -10,11 +10,11 @@ the source of truth for intent; this file is the honest status of the code.
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | **M0 — repository foundation** | done | Rust workspace, Python package, `contracts/`, CI, `scripts/verify.sh`, docs |
-| **M1 — Dagster OSS durable execution demo** | done | `python/agentic_dagster/`, `scripts/demo_durable_execution.sh`, `tests/python/test_dagster_durability.py` |
+| **M1 — Dagster OSS durable execution demo** | done | `python/ictus_dagster/`, `scripts/demo_durable_execution.sh`, `tests/python/test_dagster_durability.py` |
 | **M2 — typed Rust core** | done | `crates/core`, `crates/policy`, `crates/ports`; deterministic rules and policy |
-| **M3 — generic Rust ↔ Dagster bridge** | done | `crates/bridge`, `python/agentic_dagster/bridge.py`, `scripts/e2e_rust_dagster.sh`, `tests/python/test_rust_bridge_e2e.py` |
-| **M4 — the testbed adapter discovery** | not started (tracking only) | — |
-| **M5 — the testbed verification shadow mode** | not started (tracking only) | — |
+| **M3 — generic Rust ↔ Dagster bridge** | done | `crates/bridge`, `python/ictus_dagster/bridge.py`, `scripts/e2e_rust_dagster.sh`, `tests/python/test_rust_bridge_e2e.py` |
+| **M4 — domain adapter discovery** | not started (tracking only) | — |
+| **M5 — domain verification shadow mode** | not started (tracking only) | — |
 
 ## Architecture as implemented
 
@@ -29,7 +29,7 @@ StateSnapshot ──> DecisionProvider ──> DecisionProposal
                         JsonStdioBackend (crates/bridge)
                                           │  JSON / stdin-stdout
                                           v
-                       agentic_dagster.bridge (Dagster OSS)
+                       ictus_dagster.bridge (Dagster OSS)
                                           │
                              capability_execution_job
                              prepare -> execute -> verify -> finalize
@@ -46,8 +46,8 @@ StateSnapshot ──> DecisionProvider ──> DecisionProposal
 | Policy, capability validation, approval requirement | Rust policy | `crates/policy` |
 | Abstract ports | Rust ports | `crates/ports` |
 | Transport/adapter to the execution backend | Rust bridge | `crates/bridge` |
-| Run state, step state, retries, re-execution, run persistence, event history | Dagster | `python/agentic_dagster` |
-| Domain semantics (Work Orders, promotion, the testbed state) | domain adapter — **not present** | — |
+| Run state, step state, retries, re-execution, run persistence, event history | Dagster | `python/ictus_dagster` |
+| Domain semantics (domain work items, promotion, domain state) | domain adapter — **not present** | — |
 
 The core owns **no** workflow state. Rust never implements retries, queues,
 scheduling, step sequencing or crash recovery.
@@ -58,12 +58,12 @@ All externally serialized payloads are `schema_version = 1`:
 
 | Contract | Schema | Rust type |
 | --- | --- | --- |
-| StateSnapshot | `contracts/state-snapshot.schema.json` | `agentic_core::StateSnapshot` |
-| ExecutionObservation | `contracts/observation.schema.json` | `agentic_core::ExecutionObservation` |
-| DecisionProposal | `contracts/proposal.schema.json` | `agentic_core::DecisionProposal` |
-| PolicyDecision | `contracts/policy-decision.schema.json` | `agentic_core::PolicyDecision` |
-| ExecutionIntent | `contracts/execution-intent.schema.json` | `agentic_core::ExecutionIntent` |
-| ExecutionResult | `contracts/execution-result.schema.json` | `agentic_core::ExecutionResult` |
+| StateSnapshot | `contracts/state-snapshot.schema.json` | `ictus_core::StateSnapshot` |
+| ExecutionObservation | `contracts/observation.schema.json` | `ictus_core::ExecutionObservation` |
+| DecisionProposal | `contracts/proposal.schema.json` | `ictus_core::DecisionProposal` |
+| PolicyDecision | `contracts/policy-decision.schema.json` | `ictus_core::PolicyDecision` |
+| ExecutionIntent | `contracts/execution-intent.schema.json` | `ictus_core::ExecutionIntent` |
+| ExecutionResult | `contracts/execution-result.schema.json` | `ictus_core::ExecutionResult` |
 
 ## Boundary and responsibilities
 
@@ -80,15 +80,14 @@ All externally serialized payloads are `schema_version = 1`:
 
 ## Deliberately absent (by design)
 
-- No the testbed, agent harness, agent harness, a specialized model, LLM, Kubernetes, Dagster+ or enterprise concepts.
+- No domain-system, agent-harness, specialized-model, LLM, Kubernetes, Dagster+ or enterprise concepts.
 - No domain-specific failure taxonomy in the core (adapters map onto the
   generic observation categories).
 - No decomposition decision (introduced only after simpler decisions are proven).
-- No runtime integration with the testbed — that is M4+ and requires governance.
+- No runtime integration with a domain adapter — that is M4+ and requires governance.
 
 ## Known technical debt / open items
 
-- **License** not chosen; Cargo workspace is `publish = false`.
 - **Capability registry** is in-memory / file-based, not a service.
 - **Process supervision** for long-running capabilities is not implemented; the
   demo capabilities are synchronous and fast.
@@ -104,7 +103,7 @@ All externally serialized payloads are `schema_version = 1`:
 
 ## Next steps (not started)
 
-1. M4 discovery: document the testbed's verification entrypoint, inputs, outputs,
-   side effects and failure classes — in the testbed, not here.
-2. Governance: an ADR and the external-integration checklist in the testbed before
-   any the testbed ↔ agentic-control runtime integration.
+1. M4 discovery: document the domain adapter's verification entrypoint, inputs, outputs,
+   side effects and failure classes — in the domain adapter, not here.
+2. Governance: an ADR and the external-integration checklist before
+   any testbed ↔ Ictus runtime integration.

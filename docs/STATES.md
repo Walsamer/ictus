@@ -2,12 +2,12 @@
 
 ## 1. Initial state
 
-The current the testbed environment is the source system and remains fully operational.
+The current testbed (a private software-engineering automation environment) is the source system and remains fully operational.
 
 Conceptually:
 
 ```text
-the testbed
+testbed
 ├── work-order semantics
 ├── scheduler
 ├── atomic claims
@@ -27,12 +27,12 @@ the testbed
 └── escalation
 ```
 
-Dagster is not yet authoritative for any real the testbed behavior.
+Dagster is not yet authoritative for any real testbed behavior.
 
 The new repository exists beside the testbed.
 
 ```text
-the control repository          agentic-control
+testbed                          ictus
      │                        │
      │                        ├── Rust core
      │                        ├── Dagster OSS integration
@@ -43,7 +43,7 @@ the control repository          agentic-control
 
 ### Initial-state rule
 
-No new component may mutate the testbed state unless explicitly introduced in a later migration stage.
+No new component may mutate domain state unless explicitly introduced in a later migration stage.
 
 ---
 
@@ -52,7 +52,7 @@ No new component may mutate the testbed state unless explicitly introduced in a 
 First migration target:
 
 ```text
-the testbed native verification
+the testbed's native verification
         ↓
 authoritative result
 
@@ -80,11 +80,11 @@ The new system gains real-world data without operational authority.
 After shadow validation:
 
 ```text
-the testbed
+testbed
   ↓
 claims work
   ↓
-creates the testbed run
+creates a domain run
   ↓
 emits execution request
   ↓
@@ -94,14 +94,14 @@ runs verification / selected workflow
   ↓
 structured execution result
   ↓
-the testbed validates result
+The testbed validates the result
   ↓
-the testbed performs authoritative domain transition
+The testbed performs the authoritative domain transition
 ```
 
 At this stage:
 
-### the testbed still owns
+### The testbed still owns
 
 - WO state
 - claims
@@ -131,8 +131,8 @@ The Rust core is introduced only after Dagster executes at least one real workfl
 Flow:
 
 ```text
-the testbed failure observation
-      ├──────────────→ legacy the testbed decision
+testbed failure observation
+      ├──────────────→ legacy domain decision
       │
       └──────────────→ Rust decision path
                          ↓
@@ -173,13 +173,13 @@ Dagster:
 execute resulting intent
 ```
 
-the testbed still supplies domain-specific capabilities.
+The testbed still supplies domain-specific capabilities.
 
 ---
 
 ## 6. Late transitional state
 
-Generic the testbed orchestration code is progressively removed.
+Generic orchestration code in the testbed is progressively removed.
 
 Conceptually:
 
@@ -190,11 +190,11 @@ Rust
 Dagster
 = execution
 
-the testbed
+testbed
 = software-engineering domain
 ```
 
-the testbed capabilities may include:
+domain capabilities may include:
 
 ```text
 software.plan
@@ -206,7 +206,7 @@ software.inspect_repo
 software.manage_worktree
 ```
 
-the testbed no longer needs to own generic retry/execution infrastructure.
+The testbed no longer needs to own generic retry/execution infrastructure.
 
 ---
 
@@ -234,7 +234,7 @@ the testbed no longer needs to own generic retry/execution infrastructure.
                     └───────────────────────┘
 ```
 
-the testbed becomes one domain adapter:
+The testbed becomes one domain adapter:
 
 ```text
 domains/
@@ -249,12 +249,12 @@ The generic core is reusable without the testbed.
 
 ---
 
-## 8. Enterprise/enterprise mapping
+## 8. Enterprise mapping
 
 Personal environment:
 
 ```text
-the testbed
+testbed
 → Rust core
 → Dagster OSS
 → local processes
