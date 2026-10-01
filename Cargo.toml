@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/policy",
+    "crates/ports",
+    "crates/bridge",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+publish = false
+
+[workspace.dependencies]
+agentic-core = { path = "crates/core" }
+agentic-policy = { path = "crates/policy" }
+agentic-ports = { path = "crates/ports" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[profile.release]
+lto = "thin"

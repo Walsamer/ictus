@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "intent_id": "intent:proposal-0001",
+  "capability": "demo.verify",
+  "target": { "type": "task", "id": "task-123" },
+  "arguments": { "fail_until_attempt": 0 },
+  "policy_context": { "snapshot_id": "snap-0001", "domain": "software" },
+  "requested_by": { "provider": "rules.v1", "decision_id": "proposal-0001" }
+}

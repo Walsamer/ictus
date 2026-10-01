@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "intent_id": "intent:retry-demo",
+  "capability": "demo.verify",
+  "target": { "type": "task", "id": "task-retry-demo" },
+  "arguments": { "fail_until_attempt": 2 },
+  "policy_context": { "snapshot_id": "snap-retry-demo", "domain": "software" },
+  "requested_by": { "provider": "rules.v1", "decision_id": "proposal-retry-demo" }
+}

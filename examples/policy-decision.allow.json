@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "policy_decision_id": "policy:proposal-0001",
+  "proposal_id": "proposal-0001",
+  "decision": "ALLOW",
+  "reasons": ["capability 'demo.verify' v1 admitted"],
+  "modified_intent": {
+    "schema_version": 1,
+    "intent_id": "intent:proposal-0001",
+    "capability": "demo.verify",
+    "target": { "type": "task", "id": "task-123" },
+    "arguments": { "fail_until_attempt": 0 },
+    "policy_context": { "snapshot_id": "snap-0001", "domain": "software" },
+    "requested_by": { "provider": "rules.v1", "decision_id": "proposal-0001" }
+  },
+  "decided_at": "2026-10-01T00:00:00Z"
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "demo.verify",
+    "version": "1",
+    "risk_class": "LOW",
+    "side_effects": false,
+    "idempotent": true,
+    "required_approvals": [],
+    "timeout_class": "default",
+    "execution_backend": "dagster"
+  },
+  {
+    "id": "software.verify",
+    "version": "1",
+    "risk_class": "LOW",
+    "side_effects": false,
+    "idempotent": true,
+    "required_approvals": [],
+    "timeout_class": "default",
+    "execution_backend": "dagster"
+  },
+  {
+    "id": "software.promote",
+    "version": "1",
+    "risk_class": "HIGH",
+    "side_effects": true,
+    "idempotent": false,
+    "required_approvals": ["human"],
+    "timeout_class": "long",
+    "execution_backend": "dagster"
+  }
+]

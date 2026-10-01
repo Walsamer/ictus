@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "observation_id": "obs-0001",
+  "execution_id": "exec-0001",
+  "intent_id": "intent:proposal-0001",
+  "category": "WORKER_TIMEOUT",
+  "message": "worker exceeded its timeout class",
+  "evidence": [
+    { "kind": "dagster_run", "uri": "dagster://runs/00000000-0000-4000-8000-000000000001" }
+  ],
+  "observed_at": "2026-10-01T00:00:00Z",
+  "retryable": true
+}

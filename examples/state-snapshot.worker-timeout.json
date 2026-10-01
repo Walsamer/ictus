@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "snapshot_id": "snap-0001",
+  "timestamp": "2026-10-01T00:00:00Z",
+  "domain": "software",
+  "subject": { "type": "task", "id": "task-123" },
+  "facts": [
+    { "key": "observation.category", "value": "WORKER_TIMEOUT" },
+    { "key": "retry.attempt", "value": 0 },
+    { "key": "retry.budget", "value": 2 },
+    { "key": "capability.id", "value": "demo.verify" }
+  ],
+  "capabilities": ["demo.verify"],
+  "constraints": []
+}

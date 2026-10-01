@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-control.dev/contracts/state-snapshot.schema.json",
+  "title": "StateSnapshot",
+  "description": "Normalized, domain-neutral state visible to a DecisionProvider. Produced by a StateProvider adapter; must not expose internal database models.",
+  "type": "object",
+  "required": ["schema_version", "snapshot_id", "timestamp", "domain", "subject"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "domain": { "type": "string", "minLength": 1 },
+    "subject": { "$ref": "#/$defs/subject" },
+    "facts": { "type": "array", "items": { "$ref": "#/$defs/fact" } },
+    "capabilities": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "constraints": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "subject": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "required": ["key", "value"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "value": {}
+      }
+    }
+  }
+}

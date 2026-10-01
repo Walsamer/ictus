@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-control.dev/contracts/policy-decision.schema.json",
+  "title": "PolicyDecision",
+  "description": "The result of validating a DecisionProposal. A DENY decision must never carry an ExecutionIntent and must never reach the execution backend.",
+  "type": "object",
+  "required": ["schema_version", "policy_decision_id", "proposal_id", "decision", "decided_at"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "policy_decision_id": { "type": "string", "minLength": 1 },
+    "proposal_id": { "type": "string", "minLength": 1 },
+    "decision": { "type": "string", "enum": ["ALLOW", "DENY", "REQUIRE_APPROVAL", "MODIFY"] },
+    "reasons": { "type": "array", "items": { "type": "string" } },
+    "modified_intent": { "$ref": "execution-intent.schema.json" },
+    "decided_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "decision": { "const": "DENY" } },
+        "required": ["decision"]
+      },
+      "then": {
+        "not": { "required": ["modified_intent"] }
+      }
+    }
+  ]
+}

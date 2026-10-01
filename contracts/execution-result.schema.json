@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-control.dev/contracts/execution-result.schema.json",
+  "title": "ExecutionResult",
+  "description": "The bounded result returned by an execution backend for one ExecutionIntent. It reports facts; it is not a durable workflow state record.",
+  "type": "object",
+  "required": ["schema_version", "execution_id", "intent_id", "status", "observation"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "intent_id": { "type": "string", "minLength": 1 },
+    "status": { "$ref": "#/$defs/status" },
+    "observation": {
+      "type": "object",
+      "required": ["category"],
+      "properties": { "category": { "$ref": "#/$defs/category" } }
+    },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "status": {
+      "type": "string",
+      "enum": ["succeeded", "failed", "timed_out", "cancelled"]
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "SUCCESS",
+        "WORKER_TIMEOUT",
+        "PROCESS_CRASH",
+        "VERIFICATION_FAILURE",
+        "INTEGRATION_CONFLICT",
+        "RESOURCE_EXHAUSTED",
+        "PROVIDER_UNAVAILABLE",
+        "UNKNOWN"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["kind", "uri"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "uri": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

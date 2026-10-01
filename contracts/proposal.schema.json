@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-control.dev/contracts/proposal.schema.json",
+  "title": "DecisionProposal",
+  "description": "An untrusted proposed bounded action, produced by any DecisionProvider (rules, model, LLM, human). It must pass policy/capability validation before it can become an ExecutionIntent.",
+  "type": "object",
+  "required": ["schema_version", "proposal_id", "decision", "subject", "provider", "proposed_at"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "proposal_id": { "type": "string", "minLength": 1 },
+    "decision": { "$ref": "#/$defs/decision" },
+    "subject": { "$ref": "#/$defs/subject" },
+    "capability": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required for RETRY and EXECUTE_CAPABILITY."
+    },
+    "arguments": { "type": "object" },
+    "provider": { "$ref": "#/$defs/provider" },
+    "reason": { "type": "string" },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+    "proposed_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "decision": {
+      "type": "string",
+      "enum": ["RETRY", "ABORT", "ESCALATE", "EXECUTE_CAPABILITY"]
+    },
+    "subject": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "required": ["provider_type", "provider_id"],
+      "properties": {
+        "provider_type": { "type": "string", "enum": ["RULES", "MODEL", "LLM", "HUMAN"] },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "provider_version": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["kind", "uri"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "uri": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

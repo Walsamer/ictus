@@ -1,0 +1,27 @@
+# Rust
+/target/
+**/target/
+Cargo.lock.bak
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# Dagster local instance / runtime state
+.dagster_home/
+dagster_home/
+*.sqlite
+*.db
+
+# Local / secrets
+.env
+.env.*
+!.env.example
+.DS_Store

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-control.dev/contracts/observation.schema.json",
+  "title": "ExecutionObservation",
+  "description": "A fact produced by execution. Observations are facts, not decisions: choosing retry/decompose/escalate is the decision/policy layer's responsibility.",
+  "type": "object",
+  "required": ["schema_version", "observation_id", "execution_id", "intent_id", "category", "observed_at"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "observation_id": { "type": "string", "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "intent_id": { "type": "string", "minLength": 1 },
+    "category": { "$ref": "#/$defs/category" },
+    "message": { "type": "string" },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "retryable": {
+      "type": "boolean",
+      "description": "Backend advisory hint only. The policy layer is authoritative."
+    }
+  },
+  "$defs": {
+    "category": {
+      "type": "string",
+      "enum": [
+        "SUCCESS",
+        "WORKER_TIMEOUT",
+        "PROCESS_CRASH",
+        "VERIFICATION_FAILURE",
+        "INTEGRATION_CONFLICT",
+        "RESOURCE_EXHAUSTED",
+        "PROVIDER_UNAVAILABLE",
+        "UNKNOWN"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["kind", "uri"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "uri": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}
