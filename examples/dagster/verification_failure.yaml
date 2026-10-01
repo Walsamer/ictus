@@ -1,0 +1,6 @@
+# Deterministic verification failure (maps to VERIFICATION_FAILURE).
+resources:
+  settings:
+    config:
+      capability: demo.verify
+      fail_verify: true

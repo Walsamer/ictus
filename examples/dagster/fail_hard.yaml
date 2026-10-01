@@ -1,0 +1,6 @@
+# Deterministic persisted-failure demo: every attempt of execute_op fails.
+resources:
+  settings:
+    config:
+      capability: demo.verify
+      fail_hard: true

@@ -1,0 +1,5 @@
+# Clean execution used to demonstrate re-execution (a fresh durable run id).
+resources:
+  settings:
+    config:
+      capability: demo.verify

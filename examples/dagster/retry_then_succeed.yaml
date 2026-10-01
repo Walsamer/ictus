@@ -1,0 +1,6 @@
+# Deterministic retry demo: execute_op fails on attempts 1..2 and succeeds on 3.
+resources:
+  settings:
+    config:
+      capability: demo.verify
+      fail_until_attempt: 2
