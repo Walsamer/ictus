@@ -1,0 +1,11 @@
+# cargo-mutants configuration.
+#
+# Equivalent mutants that no test can kill (the mutant is behaviourally
+# identical to the original) are listed here with a reason.
+exclude_re = [
+  # NeverApproved::satisfied_approvals returns Vec::new(); the `vec![]` mutant is
+  # the same value, so it is not observable. The `vec![String::new()]` and
+  # `vec!["xyzzy"]` variants ARE killed by tests and are intentionally not
+  # excluded.
+  "replace <impl ApprovalProvider for NeverApproved>::satisfied_approvals -> Vec<String> with vec!\\[\\]",
+]

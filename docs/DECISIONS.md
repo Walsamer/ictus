@@ -121,6 +121,31 @@ project's own record; they do not modify the supplied architecture documents in
   `tests/python/test_workflow_registry.py`, `examples/system-diagnostic-demo/`,
   and the system-diagnostics leg of `scripts/e2e_rust_dagster.sh`.
 
+## DEC-011 — the approval requirement comes from the capability, not the proposal
+
+- **Decision:** `ApprovalProvider::is_approved(&[String])` takes the required
+  token set; the evaluator derives it from the capability (`capability.required_approvals`,
+  or an implicit `human` gate for a high-risk capability with none).
+- **Why (correctness fix):** the previous signature read `required_approvals`
+  from the *proposal*, which never carries it, so an empty token provider
+  silently approved a gated capability. Regression tests added in
+  `crates/policy/src/approval.rs` and `crates/policy/src/evaluator.rs`.
+- **Also adds:** persistent approvals — `JsonFileApprovalProvider`
+  (`crates/adapters`) and `ictus decide/flow --approvals <file>` — so approvals
+  can be granted out-of-band instead of via `--approve`.
+
+## DEC-012 — workflows are routed by data, and evidence can be persisted
+
+- **Decision:** capability → workflow routing lives in
+  `python/ictus_dagster/workflows.toml`. Names are resolved against code-side
+  tables (`JOBS`, `RESOURCES`, `SETTINGS_MAPPERS`) and any unknown or
+  inconsistent entry fails closed. The registry is the source of truth for
+  `SUPPORTED_CAPABILITIES`.
+- **Why:** adding a capability that reuses an existing workflow becomes a
+  data-only change, and the routing table is inspectable and testable.
+- **Decision:** `JsonlEvidenceStore` (`crates/adapters`) appends `EvidenceRef`s
+  as JSONL, giving the `EvidenceStore` port a real, non-Dagster implementation.
+
 ## Open decisions (not yet made)
 
 - **License holder scope.** Apache-2.0 is adopted with the copyright holder

@@ -107,18 +107,22 @@ All externally serialized payloads are `schema_version = 1`:
 
 ## Known technical debt / open items
 
-- **Capability registry** is in-memory / file-based, not a service.
+- **Capability registry** is in-memory / file-based (a built-in demo set or
+  `--capabilities <file>`), not a service.
 - **Process supervision** for long-running capabilities is not implemented; the
   demo capabilities are synchronous and fast.
 - **Timeouts** are represented by a `timeout_class` string only; no timeout
   enforcement in the demo backend yet.
-- **Approval provider** is a boolean port with an in-memory implementation;
-  there is no persistent approval store.
+- **Evidence store** is a file-backed JSONL adapter (`crates/adapters`); it is
+  not yet wired into the CLI/bridge by default.
+- **Approvals** are file-backed (`JsonFileApprovalProvider`) or `--approve`;
+  there is no interactive/live approval service.
 - The **Rust↔Dagster E2E test** and full pytest suite take ~1 minute (Dagster
   process startup per run).
 - `policy-decision.schema.json` `allOf` guard is validated only where a schema
   validator is used (Python tests); Rust enforces the same rule in
   `PolicyDecision::validate`.
+- No mutation testing / property-based testing yet (see `scripts/mutants.sh`).
 
 ## Next steps (not started)
 

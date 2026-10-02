@@ -73,3 +73,13 @@ jobs:
         run: |
           uv sync --frozen
           uv run --frozen pytest -q
+
+  mutation:
+    name: mutation testing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-mutants
+      - name: cargo-mutants (core, policy, adapters)
+        run: ./scripts/mutants.sh

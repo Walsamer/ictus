@@ -79,6 +79,13 @@ Coverage thresholds are enforced, not aspirational:
 - **Rust ≥ 95% of lines** (tests/fixtures excluded). Run the full gate with
   `./scripts/coverage.sh` (requires `cargo install cargo-llvm-cov --locked`).
 
+Mutation testing guards against tests that execute lines but do not assert:
+
+- `./scripts/mutants.sh` runs `cargo-mutants` on the fast crates
+  (`ictus-core`, `ictus-policy`, `ictus-adapters`); it fails on any surviving
+  viable mutant. Equivalent mutants are excluded with a documented reason in
+  `.cargo/mutants.toml`.
+
 New behaviour needs a deterministic test. Prefer synthetic fixtures; never
 commit real secrets, private data or machine-specific paths.
 
