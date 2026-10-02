@@ -146,6 +146,20 @@ project's own record; they do not modify the supplied architecture documents in
 - **Decision:** `JsonlEvidenceStore` (`crates/adapters`) appends `EvidenceRef`s
   as JSONL, giving the `EvidenceStore` port a real, non-Dagster implementation.
 
+## DEC-013 — the M3→M4 gate is opened for design only; M5 stays gated
+
+- **Decision (operator):** the hard M3→M4 migration gate is opened for **M4
+discovery/design only**. Fleet Work Order
+`FLEET-V3-WO-193-m4-fleet-adapter-discovery` (project `fleet`) carries the
+deliverable: a draft ADR for the Fleet ↔ Ictus boundary, the
+external-integration twelve-question checklist, the adapter interface, and the
+explicit Fleet-state-ownership list.
+- **Still gated:** M5 (verification shadow mode) is the first step that may touch
+Fleet runtime. It requires the M4 ADR to be **accepted** by the operator and an
+explicit sign-off. Opening M4 does **not** open M5.
+- **Boundary unchanged:** the core owns no workflow state, Dagster owns durable
+execution, and Fleet owns Fleet state. M4 adds **no** runtime coupling.
+
 ## Open decisions (not yet made)
 
 - **License holder scope.** Apache-2.0 is adopted with the copyright holder

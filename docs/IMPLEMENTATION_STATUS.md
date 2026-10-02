@@ -13,8 +13,8 @@ the source of truth for intent; this file is the honest status of the code.
 | **M1 — Dagster OSS durable execution demo** | done | `python/ictus_dagster/` (two workflows), `scripts/demo_durable_execution.sh`, `tests/python/test_dagster_durability.py` |
 | **M2 — typed Rust core** | done | `crates/core`, `crates/policy`, `crates/ports`; deterministic rules and policy |
 | **M3 — generic Rust ↔ Dagster bridge** | done | `crates/bridge`, `python/ictus_dagster/bridge.py`, `scripts/e2e_rust_dagster.sh`, `tests/python/test_rust_bridge_e2e.py` |
-| **M4 — domain adapter discovery** | not started (tracking only) | — |
-| **M5 — domain verification shadow mode** | not started (tracking only) | — |
+| **M4 — domain adapter discovery** | **active (design-only)** — Fleet `FLEET-V3-WO-193` | draft ADR + checklist + adapter interface in the Fleet repo |
+| **M5 — domain verification shadow mode** | **gated** (not started) | requires the M4 ADR accepted + operator sign-off |
 
 ## Architecture as implemented
 
@@ -124,9 +124,13 @@ All externally serialized payloads are `schema_version = 1`:
   `PolicyDecision::validate`.
 - No mutation testing / property-based testing yet (see `scripts/mutants.sh`).
 
-## Next steps (not started)
+## Next steps
 
-1. M4 discovery: document the domain adapter's verification entrypoint, inputs, outputs,
-   side effects and failure classes — in the domain adapter, not here.
-2. Governance: an ADR and the external-integration checklist before
-   any testbed ↔ Ictus runtime integration.
+1. **M4 — active (design-only).** Fleet Work Order `FLEET-V3-WO-193` produces the
+   draft ADR, the external-integration twelve-question checklist and the adapter
+   interface in the **Fleet** repository. Nothing in this repository changes.
+2. **M5 — gated.** Verification shadow mode may not start until the M4 ADR is
+   **accepted** by the operator and sign-off is given.
+3. Contracts are guarded by property tests (`crates/core/tests/properties.rs`),
+   coverage thresholds and mutation testing; no domain-adapter runtime code
+   exists in this repository.
