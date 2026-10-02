@@ -70,7 +70,7 @@ which runs:
 
 - `cargo fmt --all -- --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test --workspace`
+- `cargo test --workspace` (includes property tests)
 - `uv sync --frozen && uv run --frozen pytest -q` (also enforces Python coverage)
 
 Coverage thresholds are enforced, not aspirational:
@@ -78,6 +78,10 @@ Coverage thresholds are enforced, not aspirational:
 - **Python ≥ 99%** (configured in `pyproject.toml`; `pytest` fails below it).
 - **Rust ≥ 95% of lines** (tests/fixtures excluded). Run the full gate with
   `./scripts/coverage.sh` (requires `cargo install cargo-llvm-cov --locked`).
+
+Property tests (`crates/core/tests/properties.rs`) assert contract invariants
+over arbitrary inputs (round trips, version rejection, "a `DENY` never carries
+an intent"). A dedicated CI job runs them with `PROPTEST_CASES=1024`.
 
 Mutation testing guards against tests that execute lines but do not assert:
 

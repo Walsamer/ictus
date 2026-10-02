@@ -83,3 +83,14 @@ jobs:
       - uses: taiki-e/install-action@cargo-mutants
       - name: cargo-mutants (core, policy, adapters)
         run: ./scripts/mutants.sh
+
+  properties:
+    name: property tests
+    runs-on: ubuntu-latest
+    env:
+      PROPTEST_CASES: "1024"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: proptest (deep run)
+        run: cargo test -p ictus-core --test properties
