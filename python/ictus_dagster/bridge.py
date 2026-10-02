@@ -109,8 +109,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001 - CLI signature
         print(f"error: backend failure: {exc}", file=sys.stderr)
         return 1
 
+    # A failed execution is a *valid result*, not a transport error: failure is
+    # carried by `status` / `observation.category` and the decision layer must
+    # be able to observe it. Exit non-zero only when no well-formed result could
+    # be produced (contract error -> 2, unexpected backend crash -> 1).
     print(json.dumps(result))
-    return 0 if result["status"] == "succeeded" else 4
+    return 0
 
 
 if __name__ == "__main__":

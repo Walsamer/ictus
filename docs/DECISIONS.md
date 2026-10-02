@@ -69,6 +69,23 @@ project's own record; they do not modify the supplied architecture documents in
   `ExecutionObservation`, `DecisionProposal`, `PolicyDecision`, `Capability`,
   `ExecutionIntent`, `ExecutionResult`) and `schema_version`.
 
+## DEC-007 — a failed execution is a valid ExecutionResult, not a transport error
+
+- **Decision:** the execution backend must exit `0` whenever it emitted a
+  well-formed `ExecutionResult`, **including a failed run**. Failure is carried
+  by `status` / `observation.category`. The Rust `JsonStdioBackend` treats a
+  non-zero child exit as “no usable result” and fails closed. The `ictus` CLI
+  still distinguishes outcomes: `0` success, `3` not executable (policy denied
+  or approval required), `4` executed but reported non-success.
+- **Why:** the decision layer must be able to *observe* a failure as a fact
+  (`PROCESS_CRASH`, `VERIFICATION_FAILURE`, …). If a failed run were a
+  transport error, the Rust boundary would discard the result and no recovery
+  decision could ever be made.
+- **Found by:** end-to-end testing during the publication milestone; regression
+  covered by `tests/python/test_rust_bridge_e2e.py`
+  (`test_failed_execution_is_reported_through_the_boundary`) and
+  `tests/python/test_bridge.py`.
+
 ## Open decisions (not yet made)
 
 - **License holder scope.** Apache-2.0 is adopted with the copyright holder

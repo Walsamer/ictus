@@ -24,6 +24,14 @@ use ictus_ports::{ExecutionBackend, PortError};
 
 /// An `ExecutionBackend` that sends one `ExecutionIntent` as JSON on the child
 /// process's stdin and reads one `ExecutionResult` as JSON from its stdout.
+///
+/// # Backend contract
+///
+/// The child must exit `0` **whenever it emitted a well-formed
+/// `ExecutionResult`** — including a failed execution, because failure is data
+/// (`status` / `observation.category`), not a transport error. A non-zero exit
+/// means no usable result was produced (contract violation or crash) and is
+/// surfaced as [`PortError::ExecutionFailed`] (fail closed).
 #[derive(Debug, Clone)]
 pub struct JsonStdioBackend {
     program: String,

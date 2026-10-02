@@ -68,7 +68,9 @@ def test_bridge_subprocess_writes_pure_json_to_stdout(tmp_path) -> None:
     assert proc.stderr.strip(), "diagnostics should go to stderr"
 
 
-def test_bridge_subprocess_exit_code_4_on_failure(tmp_path) -> None:
+def test_bridge_subprocess_returns_a_failed_result_with_exit_0(tmp_path) -> None:
+    # A failed run is a valid result: the bridge must still exit 0 so the Rust
+    # boundary parses the ExecutionResult instead of treating it as a crash.
     env = os.environ.copy()
     env["DAGSTER_HOME"] = str(tmp_path)
     (tmp_path / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
@@ -80,8 +82,10 @@ def test_bridge_subprocess_exit_code_4_on_failure(tmp_path) -> None:
         env=env,
         check=False,
     )
-    assert proc.returncode == 4
-    assert json.loads(proc.stdout)["status"] == "failed"
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["status"] == "failed"
+    assert payload["observation"]["category"] == "PROCESS_CRASH"
 
 
 def test_bridge_rejects_an_invalid_intent() -> None:

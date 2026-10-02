@@ -78,6 +78,33 @@ def test_raw_intent_with_dagster_retry_through_the_boundary(tmp_path: Path) -> N
     assert result["observation"]["category"] == "SUCCESS"
 
 
+def test_failed_execution_is_reported_through_the_boundary(tmp_path: Path) -> None:
+    intent = {
+        "schema_version": 1,
+        "intent_id": "intent:fail-e2e",
+        "capability": "demo.verify",
+        "target": {"type": "task", "id": "t1"},
+        "arguments": {"fail_hard": True},
+        "requested_by": {"provider": "rules.v1", "decision_id": "p1"},
+    }
+    proc = subprocess.run(
+        [str(BRIDGE), "execute"],
+        input=json.dumps(intent),
+        capture_output=True,
+        text=True,
+        env=_env(tmp_path),
+        check=False,
+        cwd=str(REPO_ROOT),
+    )
+    # CLI convention: 4 = the backend executed and reported a non-success result.
+    assert proc.returncode == 4, proc.stderr
+    result = json.loads(proc.stdout)
+    assert result["status"] == "failed"
+    assert result["observation"]["category"] == "PROCESS_CRASH"
+    assert result["intent_id"] == "intent:fail-e2e"
+    assert any(item["kind"] == "dagster_run" for item in result["evidence"])
+
+
 def test_denied_decision_never_reaches_dagster(tmp_path: Path) -> None:
     # A capability the core does not know is denied by policy; no intent and no
     # Dagster run must be produced.
