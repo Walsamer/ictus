@@ -1,0 +1,5 @@
+{
+  "_comment": "Example approval-token file for `ictus decide/flow --approvals <file>`. Tokens are names, never secrets. `wildcard: true` satisfies every requirement (use only on fully-trusted paths).",
+  "satisfied": ["human"],
+  "wildcard": false
+}

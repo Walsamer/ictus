@@ -153,6 +153,34 @@ mod tests {
             .propose(&snapshot("VERIFICATION_FAILURE", 0, 5))
             .unwrap();
         assert_eq!(proposal.decision, DecisionKind::Escalate);
+        // The category must be recognised, not silently degraded to Unknown.
+        assert!(proposal
+            .reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("VerificationFailure"));
+    }
+
+    #[test]
+    fn integration_conflict_escalates_and_keeps_its_category() {
+        let proposal = RuleDecisionProvider::new()
+            .propose(&snapshot("INTEGRATION_CONFLICT", 0, 5))
+            .unwrap();
+        assert_eq!(proposal.decision, DecisionKind::Escalate);
+        assert!(proposal
+            .reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("IntegrationConflict"));
+    }
+
+    #[test]
+    fn provider_unavailable_within_budget_retries() {
+        let proposal = RuleDecisionProvider::new()
+            .propose(&snapshot("PROVIDER_UNAVAILABLE", 0, 2))
+            .unwrap();
+        assert_eq!(proposal.decision, DecisionKind::Retry);
+        assert_eq!(proposal.capability.as_deref(), Some("demo.verify"));
     }
 
     #[test]

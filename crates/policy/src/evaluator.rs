@@ -8,11 +8,26 @@
 //! `proposed_at`, so the same inputs always produce the same decision record.
 
 use ictus_core::{
-    DecisionKind, DecisionProposal, PolicyDecision, PolicyDecisionKind, RiskClass, StateSnapshot,
+    Capability, DecisionKind, DecisionProposal, PolicyDecision, PolicyDecisionKind, RiskClass,
+    StateSnapshot,
 };
 use ictus_ports::{ApprovalProvider, CapabilityRegistry, PolicyEvaluator, PortError};
 
 use crate::{intent::build_execution_intent, validation::validate_capability};
+
+/// The approval tokens a capability requires.
+///
+/// A high-risk capability with no named approvals implicitly requires a human
+/// gate, so it can never be auto-approved by an empty provider.
+fn required_approvals(capability: &Capability) -> Vec<String> {
+    if !capability.required_approvals.is_empty() {
+        capability.required_approvals.clone()
+    } else if capability.risk_class == RiskClass::High {
+        vec!["human".to_string()]
+    } else {
+        Vec::new()
+    }
+}
 
 /// The default deterministic policy.
 #[derive(Debug, Clone, Copy, Default)]
@@ -61,9 +76,12 @@ impl PolicyEvaluator for DefaultPolicyEvaluator {
         }
 
         // 3. A capability-carrying decision must reference a known capability.
+        // `proposal.validate()` above already guarantees a non-empty capability
+        // for capability-requiring decisions, so there is no separate blank
+        // check to keep in sync here.
         let capability_id = match proposal.capability.as_deref() {
-            Some(id) if !id.trim().is_empty() => id,
-            _ => {
+            Some(id) => id,
+            None => {
                 return Ok(decision.with_reason("decision requires a non-empty capability id"));
             }
         };
@@ -90,18 +108,16 @@ impl PolicyEvaluator for DefaultPolicyEvaluator {
             }
         }
 
-        // 5. Approval gate.
-        let requires_approval =
-            capability.risk_class == RiskClass::High || !capability.required_approvals.is_empty();
+        // 5. Approval gate. The required set comes from the capability (not the
+        // proposal), so an empty provider can never silently approve a gated
+        // capability.
+        let required = required_approvals(&capability);
         let intent = build_execution_intent(snapshot, proposal)?;
-        if requires_approval && !approvals.is_approved(proposal) {
+        if !required.is_empty() && !approvals.is_approved(&required) {
             decision.decision = PolicyDecisionKind::RequireApproval;
             decision = decision.with_intent(intent);
-            for approval in &capability.required_approvals {
+            for approval in &required {
                 decision = decision.with_reason(format!("requires approval: {approval}"));
-            }
-            if capability.risk_class == RiskClass::High {
-                decision = decision.with_reason("requires approval: high risk class");
             }
             return Ok(decision);
         }
@@ -244,5 +260,84 @@ mod tests {
             .unwrap();
         assert_eq!(decision.decision, PolicyDecisionKind::Allow);
         assert!(!decision.is_executable());
+    }
+
+    #[test]
+    fn high_risk_without_named_approvals_cannot_be_auto_approved() {
+        use crate::approval::TokenApprovalProvider;
+        let evaluator = DefaultPolicyEvaluator::new();
+        let registry = InMemoryCapabilityRegistry::new().with(agentic_capability(
+            "software.promote",
+            ictus_core::RiskClass::High,
+            &[],
+        ));
+
+        // An empty token provider must NOT approve a high-risk capability.
+        let pending = evaluator
+            .evaluate(
+                &snapshot(),
+                &proposal(DecisionKind::ExecuteCapability, Some("software.promote")),
+                &registry,
+                &TokenApprovalProvider::new(vec![]),
+            )
+            .unwrap();
+        assert_eq!(pending.decision, PolicyDecisionKind::RequireApproval);
+        assert!(pending
+            .reasons
+            .contains(&"requires approval: human".to_string()));
+
+        // A human token satisfies the implicit gate.
+        let allowed = evaluator
+            .evaluate(
+                &snapshot(),
+                &proposal(DecisionKind::ExecuteCapability, Some("software.promote")),
+                &registry,
+                &TokenApprovalProvider::new(vec![]).with("human"),
+            )
+            .unwrap();
+        assert_eq!(allowed.decision, PolicyDecisionKind::Allow);
+    }
+
+    #[test]
+    fn named_approvals_are_enforced() {
+        use crate::approval::TokenApprovalProvider;
+        let evaluator = DefaultPolicyEvaluator::new();
+        let registry = InMemoryCapabilityRegistry::new().with(agentic_capability(
+            "secure.op",
+            ictus_core::RiskClass::Medium,
+            &["security"],
+        ));
+
+        let wrong = evaluator
+            .evaluate(
+                &snapshot(),
+                &proposal(DecisionKind::ExecuteCapability, Some("secure.op")),
+                &registry,
+                &TokenApprovalProvider::new(vec![]).with("human"),
+            )
+            .unwrap();
+        assert_eq!(wrong.decision, PolicyDecisionKind::RequireApproval);
+
+        let right = evaluator
+            .evaluate(
+                &snapshot(),
+                &proposal(DecisionKind::ExecuteCapability, Some("secure.op")),
+                &registry,
+                &TokenApprovalProvider::new(vec![]).with("security"),
+            )
+            .unwrap();
+        assert_eq!(right.decision, PolicyDecisionKind::Allow);
+    }
+
+    fn agentic_capability(
+        id: &str,
+        risk: ictus_core::RiskClass,
+        approvals: &[&str],
+    ) -> ictus_core::Capability {
+        let mut capability = ictus_core::Capability::new(id, "1", risk);
+        for approval in approvals {
+            capability = capability.with_required_approval(*approval);
+        }
+        capability
     }
 }

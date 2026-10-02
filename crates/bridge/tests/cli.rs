@@ -357,3 +357,54 @@ fn flow_rejects_malformed_snapshot() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("invalid StateSnapshot JSON"));
 }
+
+fn write_approvals(name: &str, contents: &str) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!("ictus-{name}-{}.json", std::process::id()));
+    std::fs::write(&path, contents).unwrap();
+    path
+}
+
+#[test]
+fn decide_approvals_file_with_token_allows_high_risk() {
+    let path = write_approvals("approvals-human", r#"["human"]"#);
+    let out = run(
+        &["decide", "--approvals", path.to_str().unwrap()],
+        &snapshot("WORKER_TIMEOUT", 0, 5, "software.promote"),
+        &[],
+    );
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(stdout_json(&out)["policy_decision"]["decision"], "ALLOW");
+}
+
+#[test]
+fn decide_approvals_file_without_token_requires_approval() {
+    let path = write_approvals("approvals-empty", r#"[]"#);
+    let out = run(
+        &["decide", "--approvals", path.to_str().unwrap()],
+        &snapshot("WORKER_TIMEOUT", 0, 5, "software.promote"),
+        &[],
+    );
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(out.status.code(), Some(3));
+    assert_eq!(
+        stdout_json(&out)["policy_decision"]["decision"],
+        "REQUIRE_APPROVAL"
+    );
+}
+
+#[test]
+fn decide_rejects_a_missing_approvals_file() {
+    let out = run(
+        &["decide", "--approvals", "/nonexistent/ictus/approvals.json"],
+        &snapshot("WORKER_TIMEOUT", 0, 5, "software.promote"),
+        &[],
+    );
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("cannot load approvals file"));
+}

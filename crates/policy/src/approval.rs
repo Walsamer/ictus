@@ -1,18 +1,18 @@
 //! Approval providers.
 //!
-//! Approvals are the human gate in the trust boundary. The core never assumes
-//! approval; adapters answer whether the required approvals are satisfied.
+//! Approvals are the human gate in the trust boundary. The *required* approval
+//! set comes from the capability; a provider answers whether its satisfied
+//! tokens cover that set. The core never assumes approval.
 
-use ictus_core::DecisionProposal;
 use ictus_ports::ApprovalProvider;
 
-/// Denies every proposal approval. Safe default.
+/// Denies every non-empty approval requirement. Safe default.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NeverApproved;
 
 impl ApprovalProvider for NeverApproved {
-    fn is_approved(&self, _proposal: &DecisionProposal) -> bool {
-        false
+    fn is_approved(&self, required: &[String]) -> bool {
+        required.is_empty()
     }
 
     fn satisfied_approvals(&self) -> Vec<String> {
@@ -20,12 +20,13 @@ impl ApprovalProvider for NeverApproved {
     }
 }
 
-/// Approves every proposal. For deterministic tests and fully-trusted paths.
+/// Approves every approval requirement. For deterministic tests and
+/// fully-trusted paths.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AlwaysApproved;
 
 impl ApprovalProvider for AlwaysApproved {
-    fn is_approved(&self, _proposal: &DecisionProposal) -> bool {
+    fn is_approved(&self, _required: &[String]) -> bool {
         true
     }
 
@@ -35,6 +36,8 @@ impl ApprovalProvider for AlwaysApproved {
 }
 
 /// Approves only when every required token is present.
+///
+/// The wildcard token `*` satisfies everything.
 #[derive(Debug, Clone, Default)]
 pub struct TokenApprovalProvider {
     satisfied: Vec<String>,
@@ -52,24 +55,16 @@ impl TokenApprovalProvider {
 }
 
 impl ApprovalProvider for TokenApprovalProvider {
-    fn is_approved(&self, proposal: &DecisionProposal) -> bool {
-        // A wildcard approval satisfies everything.
+    fn is_approved(&self, required: &[String]) -> bool {
+        if required.is_empty() {
+            return true;
+        }
         if self.satisfied.iter().any(|token| token == "*") {
             return true;
         }
-        proposal
-            .arguments
-            .get("required_approvals")
-            .and_then(|value| value.as_array())
-            .map(|required| {
-                required.iter().all(|token| {
-                    token
-                        .as_str()
-                        .map(|token| self.satisfied.iter().any(|s| s == token))
-                        .unwrap_or(false)
-                })
-            })
-            .unwrap_or(true)
+        required
+            .iter()
+            .all(|token| self.satisfied.iter().any(|satisfied| satisfied == token))
     }
 
     fn satisfied_approvals(&self) -> Vec<String> {
@@ -80,47 +75,39 @@ impl ApprovalProvider for TokenApprovalProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ictus_core::{DecisionKind, ProviderMetadata, Subject};
-    use ictus_ports::ApprovalProvider;
-
-    fn proposal(required: Option<Vec<&str>>) -> DecisionProposal {
-        let mut proposal = DecisionProposal::new(
-            "p1",
-            DecisionKind::ExecuteCapability,
-            Subject::new("task", "t1"),
-            ProviderMetadata::rules("rules"),
-            "2026-10-01T00:00:00Z",
-        );
-        if let Some(tokens) = required {
-            proposal = proposal.with_argument("required_approvals", serde_json::json!(tokens));
-        }
-        proposal
-    }
 
     #[test]
     fn never_and_always_providers() {
-        assert!(!NeverApproved.is_approved(&proposal(None)));
-        assert!(AlwaysApproved.is_approved(&proposal(None)));
+        assert!(NeverApproved.is_approved(&[]));
+        assert!(!NeverApproved.is_approved(&["human".to_string()]));
+        assert!(AlwaysApproved.is_approved(&["human".to_string()]));
         assert!(NeverApproved.satisfied_approvals().is_empty());
         assert_eq!(AlwaysApproved.satisfied_approvals(), vec!["*".to_string()]);
     }
 
     #[test]
-    fn proposal_without_required_approvals_is_approved() {
-        assert!(TokenApprovalProvider::new(vec![]).is_approved(&proposal(None)));
+    fn empty_requirement_is_always_approved() {
+        assert!(TokenApprovalProvider::new(vec![]).is_approved(&[]));
     }
 
     #[test]
     fn token_provider_requires_every_token() {
         let provider = TokenApprovalProvider::new(vec![]).with("human");
-        assert!(provider.is_approved(&proposal(Some(vec!["human"]))));
-        assert!(!provider.is_approved(&proposal(Some(vec!["human", "security"]))));
+        assert!(provider.is_approved(&["human".to_string()]));
+        assert!(!provider.is_approved(&["human".to_string(), "security".to_string()]));
         assert_eq!(provider.satisfied_approvals(), vec!["human".to_string()]);
+    }
+
+    #[test]
+    fn an_empty_token_provider_denies_a_non_empty_requirement() {
+        // Regression: previously an empty provider silently approved everything
+        // because it read the (absent) requirement from the proposal.
+        assert!(!TokenApprovalProvider::new(vec![]).is_approved(&["human".to_string()]));
     }
 
     #[test]
     fn wildcard_approval_satisfies_everything() {
         let provider = TokenApprovalProvider::new(vec![]).with("*");
-        assert!(provider.is_approved(&proposal(Some(vec!["human", "security"]))));
+        assert!(provider.is_approved(&["human".to_string(), "security".to_string()]));
     }
 }

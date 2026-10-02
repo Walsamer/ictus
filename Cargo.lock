@@ -3,9 +3,21 @@
 version = 3
 
 [[package]]
+name = "ictus-adapters"
+version = "0.1.0"
+dependencies = [
+ "ictus-core",
+ "ictus-ports",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ictus-bridge"
 version = "0.1.0"
 dependencies = [
+ "ictus-adapters",
  "ictus-core",
  "ictus-policy",
  "ictus-ports",

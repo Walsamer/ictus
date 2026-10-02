@@ -18,23 +18,31 @@
 //! result, `2` usage/parse error.
 
 use std::io::Read;
+use std::path::Path;
 use std::process::ExitCode;
 
+use ictus_adapters::JsonFileApprovalProvider;
 use ictus_bridge::JsonStdioBackend;
-use ictus_core::{Capability, DecisionProposal, ExecutionIntent, RiskClass, StateSnapshot};
+use ictus_core::{
+    Capability, DecisionProposal, ExecutionIntent, PolicyDecision, RiskClass, StateSnapshot,
+};
 use ictus_policy::{
     AlwaysApproved, DefaultPolicyEvaluator, InMemoryCapabilityRegistry, NeverApproved,
     RuleDecisionProvider,
 };
-use ictus_ports::{DecisionProvider, ExecutionBackend, PolicyEvaluator};
+use ictus_ports::{ApprovalProvider, DecisionProvider, ExecutionBackend, PolicyEvaluator};
 
 const USAGE: &str = "\
 ictus — typed decision/policy core + Dagster execution bridge
 
 USAGE:
-    ictus decide  [--approve] [--capabilities <file.json>]   # snapshot JSON on stdin
-    ictus execute                                            # intent JSON on stdin
-    ictus flow    [--approve] [--capabilities <file.json>]   # snapshot JSON on stdin
+    ictus decide  [--approve | --approvals <file.json>] [--capabilities <file.json>]   # snapshot JSON on stdin
+    ictus execute                                                                       # intent JSON on stdin
+    ictus flow    [--approve | --approvals <file.json>] [--capabilities <file.json>]   # snapshot JSON on stdin
+
+NOTES:
+    --approve          satisfy every approval requirement (fully-trusted path)
+    --approvals FILE   satisfy approvals from a JSON token file (fail closed)
 ";
 
 /// Built-in generic demo capabilities. A real deployment loads these from a
@@ -74,18 +82,32 @@ fn read_stdin() -> Result<String, String> {
     Ok(buffer)
 }
 
-fn parse_flags(args: &[String]) -> Result<(bool, Option<String>), String> {
-    let mut approve = false;
-    let mut capabilities = None;
+#[derive(Debug, Default)]
+struct Flags {
+    approve: bool,
+    capabilities: Option<String>,
+    approvals: Option<String>,
+}
+
+fn parse_flags(args: &[String]) -> Result<Flags, String> {
+    let mut flags = Flags::default();
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
-            "--approve" => approve = true,
+            "--approve" => flags.approve = true,
             "--capabilities" => {
                 index += 1;
-                capabilities = Some(
+                flags.capabilities = Some(
                     args.get(index)
                         .ok_or("--capabilities requires a path")?
+                        .clone(),
+                );
+            }
+            "--approvals" => {
+                index += 1;
+                flags.approvals = Some(
+                    args.get(index)
+                        .ok_or("--approvals requires a path")?
                         .clone(),
                 );
             }
@@ -93,32 +115,35 @@ fn parse_flags(args: &[String]) -> Result<(bool, Option<String>), String> {
         }
         index += 1;
     }
-    Ok((approve, capabilities))
+    Ok(flags)
 }
 
-fn propose_and_evaluate(
-    approve: bool,
-    capabilities_path: Option<&str>,
-) -> Result<(DecisionProposal, ictus_core::PolicyDecision), String> {
+fn approval_provider(flags: &Flags) -> Result<Box<dyn ApprovalProvider>, String> {
+    if let Some(path) = &flags.approvals {
+        let provider = JsonFileApprovalProvider::load(Path::new(path))
+            .map_err(|error| format!("cannot load approvals file '{path}': {error}"))?;
+        Ok(Box::new(provider))
+    } else if flags.approve {
+        Ok(Box::new(AlwaysApproved))
+    } else {
+        Ok(Box::new(NeverApproved))
+    }
+}
+
+fn propose_and_evaluate(flags: &Flags) -> Result<(DecisionProposal, PolicyDecision), String> {
     let raw = read_stdin()?;
     let snapshot: StateSnapshot =
         serde_json::from_str(&raw).map_err(|e| format!("invalid StateSnapshot JSON: {e}"))?;
     snapshot.validate().map_err(|e| e.to_string())?;
 
-    let registry = load_registry(capabilities_path)?;
+    let registry = load_registry(flags.capabilities.as_deref())?;
     let proposal = RuleDecisionProvider::new()
         .propose(&snapshot)
         .map_err(|e| e.to_string())?;
-    let evaluator = DefaultPolicyEvaluator::new();
-    let policy_decision = if approve {
-        evaluator
-            .evaluate(&snapshot, &proposal, &registry, &AlwaysApproved)
-            .map_err(|e| e.to_string())?
-    } else {
-        evaluator
-            .evaluate(&snapshot, &proposal, &registry, &NeverApproved)
-            .map_err(|e| e.to_string())?
-    };
+    let approvals = approval_provider(flags)?;
+    let policy_decision = DefaultPolicyEvaluator::new()
+        .evaluate(&snapshot, &proposal, &registry, approvals.as_ref())
+        .map_err(|e| e.to_string())?;
     Ok((proposal, policy_decision))
 }
 
@@ -131,8 +156,8 @@ fn print_json(value: &serde_json::Value) -> Result<(), String> {
 }
 
 fn run_decide(args: &[String]) -> Result<ExitCode, String> {
-    let (approve, capabilities) = parse_flags(args)?;
-    let (proposal, policy_decision) = propose_and_evaluate(approve, capabilities.as_deref())?;
+    let flags = parse_flags(args)?;
+    let (proposal, policy_decision) = propose_and_evaluate(&flags)?;
     let intent = policy_decision.modified_intent.clone();
     let executable = policy_decision.is_executable();
     print_json(&serde_json::json!({
@@ -163,8 +188,8 @@ fn run_execute() -> Result<ExitCode, String> {
 }
 
 fn run_flow(args: &[String]) -> Result<ExitCode, String> {
-    let (approve, capabilities) = parse_flags(args)?;
-    let (proposal, policy_decision) = propose_and_evaluate(approve, capabilities.as_deref())?;
+    let flags = parse_flags(args)?;
+    let (proposal, policy_decision) = propose_and_evaluate(&flags)?;
 
     let mut trace = serde_json::json!({
         "schema_version": ictus_core::SCHEMA_VERSION,

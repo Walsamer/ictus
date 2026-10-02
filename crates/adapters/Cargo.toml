@@ -1,20 +1,15 @@
 [package]
-name = "ictus-bridge"
-description = "Versioned JSON-over-stdio bridge from a validated ExecutionIntent to a Dagster execution backend."
+name = "ictus-adapters"
+description = "Generic, non-Dagster adapters: file-backed evidence store and approval provider."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[[bin]]
-name = "ictus"
-path = "src/main.rs"
-
 [dependencies]
 ictus-core = { workspace = true }
 ictus-ports = { workspace = true }
-ictus-adapters = { workspace = true }
-ictus-policy = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

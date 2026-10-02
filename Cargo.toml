@@ -5,6 +5,7 @@ members = [
     "crates/policy",
     "crates/ports",
     "crates/bridge",
+    "crates/adapters",
 ]
 
 [workspace.package]
@@ -19,6 +20,7 @@ homepage = "https://github.com/Walsamer/ictus"
 ictus-core = { path = "crates/core" }
 ictus-policy = { path = "crates/policy" }
 ictus-ports = { path = "crates/ports" }
+ictus-adapters = { path = "crates/adapters" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"

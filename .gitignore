@@ -31,3 +31,7 @@ dagster_home/
 .coverage.*
 htmlcov/
 coverage.xml
+
+# Mutation testing output
+mutants.out/
+mutants.out.old/

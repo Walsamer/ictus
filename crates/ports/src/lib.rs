@@ -55,10 +55,12 @@ pub trait CapabilityRegistry {
     }
 }
 
-/// Answers whether the approvals a proposal needs are satisfied.
+/// Answers whether the approvals a capability requires are satisfied.
 pub trait ApprovalProvider {
-    /// True when every approval the proposal/capability requires is present.
-    fn is_approved(&self, proposal: &DecisionProposal) -> bool;
+    /// True when every token in `required` is satisfied (vacuously true when
+    /// nothing is required). The required set comes from the *capability*, not
+    /// from the proposal.
+    fn is_approved(&self, required: &[String]) -> bool;
 
     /// The approval tokens currently satisfied (for audit reasons).
     fn satisfied_approvals(&self) -> Vec<String>;
