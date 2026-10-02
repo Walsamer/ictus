@@ -71,7 +71,13 @@ which runs:
 - `cargo fmt --all -- --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo test --workspace`
-- `uv sync --frozen && uv run --frozen pytest -q`
+- `uv sync --frozen && uv run --frozen pytest -q` (also enforces Python coverage)
+
+Coverage thresholds are enforced, not aspirational:
+
+- **Python ≥ 99%** (configured in `pyproject.toml`; `pytest` fails below it).
+- **Rust ≥ 95% of lines** (tests/fixtures excluded). Run the full gate with
+  `./scripts/coverage.sh` (requires `cargo install cargo-llvm-cov --locked`).
 
 New behaviour needs a deterministic test. Prefer synthetic fixtures; never
 commit real secrets, private data or machine-specific paths.

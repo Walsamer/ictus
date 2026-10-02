@@ -56,6 +56,12 @@ def test_ingest_failure_fails_the_first_step() -> None:
     assert "ingest_op" in result.get_failed_step_keys()
 
 
+def test_negative_rows_fail_ingest() -> None:
+    result, _ = _run(rows=-1)
+    assert not result.success
+    assert "ingest_op" in result.get_failed_step_keys()
+
+
 def test_re_execution_is_a_new_durable_run() -> None:
     first, _ = _run()
     second, _ = _run()

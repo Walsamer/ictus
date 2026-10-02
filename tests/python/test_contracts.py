@@ -85,6 +85,8 @@ def test_validate_intent_rejects_non_object() -> None:
     [
         (lambda d: d.pop("execution_id"), "missing required field: execution_id"),
         (lambda d: d.pop("intent_id"), "missing required field: intent_id"),
+        (lambda d: d.update(schema_version="1"), "schema_version must be int"),
+        (lambda d: d.update(schema_version=2), "unsupported schema_version"),
         (lambda d: d.update(status="bogus"), "status must be one of"),
         (lambda d: d.pop("status"), "missing required field: status"),
         (lambda d: d.pop("observation"), "missing required field: observation"),

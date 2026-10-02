@@ -16,6 +16,10 @@ fn subject() -> Subject {
     Subject::new("task", "t1")
 }
 
+fn make_subject() -> Subject {
+    subject()
+}
+
 fn make_snapshot() -> StateSnapshot {
     StateSnapshot::new("s1", "2026-10-01T00:00:00Z", "software", subject())
 }
@@ -361,4 +365,90 @@ fn policy_decision_kind_serializes_screaming_snake() {
         serde_json::to_value(PolicyDecisionKind::RequireApproval).unwrap(),
         "REQUIRE_APPROVAL"
     );
+}
+
+#[test]
+fn observation_validate_rejects_empty_ids() {
+    let mut observation = ExecutionObservation::new(
+        "o1",
+        "e1",
+        "i1",
+        ObservationCategory::Success,
+        "2026-10-01T00:00:00Z",
+    );
+    observation.observation_id = String::new();
+    assert!(observation.validate().is_err());
+
+    let mut observation = ExecutionObservation::new(
+        "o1",
+        "e1",
+        "i1",
+        ObservationCategory::Success,
+        "2026-10-01T00:00:00Z",
+    );
+    observation.execution_id = String::new();
+    assert!(observation.validate().is_err());
+}
+
+#[test]
+fn intent_validate_rejects_empty_ids_and_provenance() {
+    let base = || {
+        ExecutionIntent::new(
+            "i1",
+            "demo.verify",
+            make_subject(),
+            RequestedBy::new("rules", "p1"),
+        )
+    };
+
+    let mut intent = base();
+    intent.intent_id = String::new();
+    assert!(intent.validate().is_err());
+
+    let mut intent = base();
+    intent.requested_by.provider = String::new();
+    assert!(intent.validate().is_err());
+}
+
+#[test]
+fn result_validate_rejects_empty_ids() {
+    let mut result = ExecutionResult::new(
+        "e1",
+        "i1",
+        ExecutionStatus::Succeeded,
+        ObservationCategory::Success,
+    );
+    result.execution_id = String::new();
+    assert!(result.validate().is_err());
+
+    let mut result = ExecutionResult::new(
+        "e1",
+        "i1",
+        ExecutionStatus::Succeeded,
+        ObservationCategory::Success,
+    );
+    result.intent_id = String::new();
+    assert!(result.validate().is_err());
+}
+
+#[test]
+fn proposal_validate_rejects_empty_proposal_and_subject() {
+    let mut proposal = make_proposal(DecisionKind::Abort);
+    proposal.proposal_id = String::new();
+    assert!(proposal.validate().is_err());
+
+    let mut proposal = make_proposal(DecisionKind::Abort);
+    proposal.subject.id = String::new();
+    assert!(proposal.validate().is_err());
+}
+
+#[test]
+fn policy_decision_validate_rejects_empty_ids() {
+    let mut decision = PolicyDecision::new("pd", "p", PolicyDecisionKind::Allow, "t");
+    decision.policy_decision_id = String::new();
+    assert!(decision.validate().is_err());
+
+    let mut decision = PolicyDecision::new("pd", "p", PolicyDecisionKind::Allow, "t");
+    decision.proposal_id = String::new();
+    assert!(decision.validate().is_err());
 }

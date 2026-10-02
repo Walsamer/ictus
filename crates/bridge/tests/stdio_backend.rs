@@ -107,3 +107,21 @@ fn default_bridge_command_is_stable() {
         "uv run --frozen python -m ictus_dagster.bridge"
     );
 }
+
+#[test]
+fn from_env_prefers_override_then_default() {
+    let previous = std::env::var("ICTUS_DAGSTER_BRIDGE_CMD").ok();
+
+    std::env::set_var("ICTUS_DAGSTER_BRIDGE_CMD", "python3 -m fake.bridge");
+    let overridden = JsonStdioBackend::from_env();
+    assert_eq!(overridden.program(), "python3");
+    assert_eq!(overridden.args(), &["-m", "fake.bridge"]);
+
+    std::env::remove_var("ICTUS_DAGSTER_BRIDGE_CMD");
+    let defaulted = JsonStdioBackend::from_env();
+    assert_eq!(defaulted.program(), "uv");
+
+    if let Some(value) = previous {
+        std::env::set_var("ICTUS_DAGSTER_BRIDGE_CMD", value);
+    }
+}

@@ -29,9 +29,25 @@ packages = ["python/ictus_dagster"]
 dev = [
     "pytest>=8",
     "jsonschema>=4",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
 pythonpath = ["python"]
 filterwarnings = ["ignore::DeprecationWarning"]
+addopts = "--cov=ictus_dagster --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["ictus_dagster"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 99
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

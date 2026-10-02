@@ -20,7 +20,7 @@ def verify_op(
     """
     if settings.fail_verify:
         raise Failure(description="intentional verification failure")
-    if not executed.get("executed"):
+    if not executed.get("executed"):  # pragma: no cover - defensive; execute_op never returns executed=False
         raise Failure(description="nothing was executed to verify")
     context.log.info(
         "verify: capability=%s execute_attempts=%s",
