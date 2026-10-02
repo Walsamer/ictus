@@ -59,6 +59,42 @@ def test_failed_verify_step_maps_to_verification_failure() -> None:
     assert payload["observation"]["category"] == "VERIFICATION_FAILURE"
 
 
+def test_data_quality_step_categories() -> None:
+    assert (
+        execution_result_from_run(
+            execution_id="e", intent_id="i", success=False, failed_step="check_op"
+        )["observation"]["category"]
+        == "VERIFICATION_FAILURE"
+    )
+    assert (
+        execution_result_from_run(
+            execution_id="e", intent_id="i", success=False, failed_step="profile_op"
+        )["observation"]["category"]
+        == "PROCESS_CRASH"
+    )
+    assert (
+        execution_result_from_run(
+            execution_id="e", intent_id="i", success=False, failed_step="ingest_op"
+        )["observation"]["category"]
+        == "UNKNOWN"
+    )
+
+
+def test_unknown_failed_step_and_missing_step_map_to_unknown() -> None:
+    assert (
+        execution_result_from_run(
+            execution_id="e", intent_id="i", success=False, failed_step="mystery_op"
+        )["observation"]["category"]
+        == "UNKNOWN"
+    )
+    assert (
+        execution_result_from_run(execution_id="e", intent_id="i", success=False)[
+            "observation"
+        ]["category"]
+        == "UNKNOWN"
+    )
+
+
 def test_explicit_failure_category_wins() -> None:
     payload = execution_result_from_run(
         execution_id="exec-4",

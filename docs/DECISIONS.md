@@ -86,6 +86,29 @@ project's own record; they do not modify the supplied architecture documents in
   (`test_failed_execution_is_reported_through_the_boundary`) and
   `tests/python/test_bridge.py`.
 
+## DEC-008 — capability → workflow routing lives in the execution backend
+
+- **Decision:** the Dagster adapter maps a *validated* capability to a workflow
+  graph (`ictus_dagster.adapters.workflow_registry`). Routing is data, not
+  policy: the Rust policy layer has already authorized the capability, so adding
+  a workflow never adds authorization logic, and the Rust boundary stays
+  workflow-agnostic.
+- **Why:** different capabilities legitimately need different graph shapes
+  (`prepare→execute→verify→finalize` vs `ingest→profile→check→publish`).
+- **Enforced by:** `tests/python/test_workflow_registry.py`; an unknown
+  capability fails closed with `UnsupportedCapability`.
+
+## DEC-009 — a second, non-software domain proves genericity
+
+- **Decision:** ship a second domain workflow (data quality) end to end.
+- **Why:** the core claims to be domain-independent; the strongest evidence is a
+  non-software domain running through the same versioned contracts, the same Rust
+  policy core and the same bridge, with no core change.
+- **Evidence:** `python/ictus_dagster/jobs/data_quality_job.py`,
+  `examples/state-snapshot.data-quality.json`,
+  `examples/data-quality-demo/`, and the data-quality leg of
+  `scripts/e2e_rust_dagster.sh`.
+
 ## Open decisions (not yet made)
 
 - **License holder scope.** Apache-2.0 is adopted with the copyright holder

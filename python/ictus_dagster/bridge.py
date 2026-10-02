@@ -20,13 +20,9 @@ from typing import Any
 from dagster import DagsterInstance
 
 from ictus_dagster.adapters.contracts import ContractError, validate_intent
-from ictus_dagster.adapters.intent_config import (
-    UnsupportedCapability,
-    settings_from_intent,
-)
+from ictus_dagster.adapters.intent_config import UnsupportedCapability
 from ictus_dagster.adapters.result_mapping import execution_result_from_run
-from ictus_dagster.jobs.capability_job import capability_execution_job
-from ictus_dagster.resources.execution_settings import ExecutionSettings
+from ictus_dagster.adapters.workflow_registry import resolve_workflow
 
 
 def _now() -> str:
@@ -52,16 +48,19 @@ def execute_intent(
 ) -> dict[str, Any]:
     """Execute one validated intent and return an ExecutionResult payload."""
     validate_intent(payload)
-    config = settings_from_intent(payload)
-    settings = ExecutionSettings(**config)
+    # Routing a validated capability to a workflow graph is an execution
+    # concern; the Rust policy layer already authorized the capability.
+    spec = resolve_workflow(payload["capability"])
+    config = spec.settings_from_arguments(payload.get("arguments") or {})
+    resource = spec.resource_cls(**config)
     dagster_instance = instance or _instance()
 
     started_at = _now()
     # Keep stdout a pure contract: Dagster's console logging is redirected to
     # stderr for the duration of the run.
     with redirect_stdout(sys.stderr):
-        result = capability_execution_job.execute_in_process(
-            resources={"settings": settings},
+        result = spec.job.execute_in_process(
+            resources={spec.resource_key: resource},
             instance=dagster_instance,
             raise_on_error=False,
             tags={

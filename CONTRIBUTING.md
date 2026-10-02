@@ -32,6 +32,19 @@ Rules:
 5. **No domain knowledge in the core.** No domain system, model provider,
    runtime or infrastructure concept may leak into `ictus-core` or
    `ictus-policy`. Domain specifics belong in adapters.
+6. **Routing is not authorization.** Mapping a validated capability to a
+   workflow graph (`ictus_dagster.adapters.workflow_registry`) is an execution
+   concern. Adding a workflow must never add a policy decision.
+
+### Adding a workflow
+
+1. add the ops/job under `python/ictus_dagster/{ops,jobs}/`;
+2. add a `WorkflowSpec` to `adapters/workflow_registry.py` (capability → job,
+   resource key/class, settings mapper);
+3. add a step→observation mapping in `adapters/result_mapping.py`;
+4. register the job in `definitions.py`; and
+5. add a capability to the Rust CLI's builtin registry only if the example needs
+   it — a real deployment loads capabilities from a registry file.
 
 ## Contracts require versioning discipline
 

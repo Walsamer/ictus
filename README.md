@@ -76,6 +76,7 @@ database or configuration is required to build, test or run Ictus.
 | Typed contracts, decisions, capability metadata, execution intents | `ictus-core` / `ictus-policy` |
 | Abstract ports (state, decision, policy, capability, execution, approval) | `ictus-ports` |
 | Transport adapter to the execution backend | `ictus-bridge` |
+| Capability → workflow routing (which graph executes a validated capability) | `ictus_dagster` (execution-side) |
 | Run state, step state, retries, re-execution, dependencies, persistence, event history | Dagster (`ictus_dagster`) |
 | Domain semantics (domain objects, domain state transitions) | the domain adapter |
 
@@ -142,6 +143,7 @@ uv run --frozen pytest -q
 Demonstrations:
 
 ```bash
+./scripts/quickstart.sh               # one-command tour: build, decide, Rust<->Dagster, second domain
 ./scripts/demo_durable_execution.sh   # persisted failure, retry, re-execution, run inspection
 ./scripts/e2e_rust_dagster.sh         # StateSnapshot -> policy -> Dagster -> ExecutionResult
 ```
@@ -168,6 +170,9 @@ Early (v0.1.0). The generic foundation is implemented:
 - typed, versioned contracts and a deterministic policy core (M2)
 - a generic Dagster durable-execution backend with retry/re-execution (M1)
 - a versioned Rust ↔ Dagster bridge (M3)
+- two domain workflows through the same core: a software-engineering capability
+  workflow and a **non-software data-quality workflow** (evidence that the core
+  is domain-independent)
 
 Domain-adapter runtime integration is deliberately **not** started. See
 [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) for what exists,

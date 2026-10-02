@@ -10,7 +10,7 @@ the source of truth for intent; this file is the honest status of the code.
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | **M0 — repository foundation** | done | Rust workspace, Python package, `contracts/`, CI, `scripts/verify.sh`, docs |
-| **M1 — Dagster OSS durable execution demo** | done | `python/ictus_dagster/`, `scripts/demo_durable_execution.sh`, `tests/python/test_dagster_durability.py` |
+| **M1 — Dagster OSS durable execution demo** | done | `python/ictus_dagster/` (two workflows), `scripts/demo_durable_execution.sh`, `tests/python/test_dagster_durability.py` |
 | **M2 — typed Rust core** | done | `crates/core`, `crates/policy`, `crates/ports`; deterministic rules and policy |
 | **M3 — generic Rust ↔ Dagster bridge** | done | `crates/bridge`, `python/ictus_dagster/bridge.py`, `scripts/e2e_rust_dagster.sh`, `tests/python/test_rust_bridge_e2e.py` |
 | **M4 — domain adapter discovery** | not started (tracking only) | — |
@@ -31,12 +31,29 @@ StateSnapshot ──> DecisionProvider ──> DecisionProposal
                                           v
                        ictus_dagster.bridge (Dagster OSS)
                                           │
-                             capability_execution_job
-                             prepare -> execute -> verify -> finalize
+                     resolve_workflow(capability)  [execution-side]
+                    ┌─────────────────────┴─────────────────────┐
+        capability_execution_job                  data_quality_job
+   prepare→execute→verify→finalize          ingest→profile→check→publish
                                           │
                                           v
                                   ExecutionResult
 ```
+
+Capability → workflow routing is **execution-side** (see
+[`DECISIONS.md`](DECISIONS.md) DEC-008): the Rust policy layer has already
+authorized the capability, and adding a workflow never adds authorization code.
+
+### Domain workflows shipped
+
+| Capability | Workflow | Domain |
+| --- | --- | --- |
+| `demo.verify`, `software.verify` | `capability_execution_job` (`prepare→execute→verify→finalize`) | software-engineering |
+| `data.quality_check` | `data_quality_job` (`ingest→profile→check→publish`) | data quality (non-software) |
+
+The second workflow is deliberate evidence that the generic core, contracts and
+bridge are domain-independent (`examples/data-quality-demo/`, and the
+data-quality leg of `scripts/e2e_rust_dagster.sh`).
 
 ## State ownership
 

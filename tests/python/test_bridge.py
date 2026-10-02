@@ -35,6 +35,21 @@ def test_execute_intent_returns_a_contract_result() -> None:
     assert any(item["kind"] == "dagster_run" for item in result["evidence"])
 
 
+def test_execute_data_quality_capability_returns_success() -> None:
+    payload = _intent("data.quality_check", {"dataset": "synthetic.events", "rows": 5})
+    result = bridge.execute_intent(payload, instance=DagsterInstance.ephemeral())
+    assert result["status"] == "succeeded"
+    assert result["observation"]["category"] == "SUCCESS"
+    assert any(item["kind"] == "dagster_run" for item in result["evidence"])
+
+
+def test_execute_data_quality_check_failure_maps_to_verification_failure() -> None:
+    payload = _intent("data.quality_check", {"fail_on_check": True})
+    result = bridge.execute_intent(payload, instance=DagsterInstance.ephemeral())
+    assert result["status"] == "failed"
+    assert result["observation"]["category"] == "VERIFICATION_FAILURE"
+
+
 def test_execute_intent_reports_failure_without_raising() -> None:
     result = bridge.execute_intent(
         _intent(arguments={"fail_hard": True}), instance=DagsterInstance.ephemeral()

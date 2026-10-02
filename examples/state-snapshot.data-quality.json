@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "snapshot_id": "snap-dq-0001",
+  "timestamp": "2026-10-02T00:00:00Z",
+  "domain": "data",
+  "subject": { "type": "dataset", "id": "synthetic.orders" },
+  "facts": [
+    { "key": "observation.category", "value": "WORKER_TIMEOUT" },
+    { "key": "retry.attempt", "value": 0 },
+    { "key": "retry.budget", "value": 2 },
+    { "key": "capability.id", "value": "data.quality_check" }
+  ],
+  "capabilities": ["data.quality_check"],
+  "constraints": []
+}

@@ -1,0 +1,6 @@
+# Data-quality workflow run config (second, non-software domain).
+resources:
+  dq_settings:
+    config:
+      dataset: synthetic.orders
+      rows: 100

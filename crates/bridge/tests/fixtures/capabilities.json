@@ -1,0 +1,5 @@
+[
+  { "id": "demo.verify", "version": "1", "risk_class": "LOW", "timeout_class": "default" },
+  { "id": "custom.cap", "version": "9", "risk_class": "LOW", "timeout_class": "default" },
+  { "id": "software.promote", "version": "1", "risk_class": "HIGH", "required_approvals": ["human"], "timeout_class": "long" }
+]

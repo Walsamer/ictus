@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "intent_id": "intent:dq-demo",
+  "capability": "data.quality_check",
+  "target": { "type": "dataset", "id": "synthetic.orders" },
+  "arguments": { "dataset": "synthetic.orders", "rows": 100, "fail_until_attempt": 1 },
+  "policy_context": { "snapshot_id": "snap-dq-0001", "domain": "data" },
+  "requested_by": { "provider": "rules.v1", "decision_id": "proposal:dq-demo" }
+}

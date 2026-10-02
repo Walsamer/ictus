@@ -21,6 +21,11 @@ FAILED_STEP_CATEGORY = {
     "execute": "PROCESS_CRASH",
     "verify": "VERIFICATION_FAILURE",
     "finalize": "UNKNOWN",
+    # data-quality workflow
+    "ingest_op": "UNKNOWN",
+    "profile_op": "PROCESS_CRASH",
+    "check_op": "VERIFICATION_FAILURE",
+    "publish_op": "UNKNOWN",
 }
 
 

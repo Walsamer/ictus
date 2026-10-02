@@ -44,6 +44,7 @@ fn builtin_registry() -> InMemoryCapabilityRegistry {
         .with(Capability::new("demo.verify", "1", RiskClass::Low).with_idempotent(true))
         .with(Capability::new("software.verify", "1", RiskClass::Low).with_idempotent(true))
         .with(Capability::new("software.implement", "1", RiskClass::Medium).with_side_effects(true))
+        .with(Capability::new("data.quality_check", "1", RiskClass::Low).with_idempotent(true))
         .with(
             Capability::new("software.promote", "1", RiskClass::High)
                 .with_side_effects(true)
