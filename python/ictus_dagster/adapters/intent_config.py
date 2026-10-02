@@ -1,8 +1,11 @@
-"""Interpret a generic ExecutionIntent's ``arguments`` as execution settings.
+"""Capability catalog and per-workflow intent validators.
 
-No Dagster import, so this is unit-testable in isolation. The intent's
-``arguments`` object is opaque to the core and is interpreted here by the
-adapter that owns the capability.
+The capability sets are derived from the workflow registry
+(`ictus_dagster/workflows.toml`), so the routing table is the single source of
+truth for which capabilities this execution backend owns.
+
+The pure settings mappers live in `adapters/settings.py` (Dagster-free); this
+module only adds capability validation on top of them.
 """
 
 from __future__ import annotations
@@ -10,6 +13,15 @@ from __future__ import annotations
 from typing import Any
 
 from ictus_dagster.adapters.errors import UnsupportedCapability
+from ictus_dagster.adapters.settings import (
+    capability_settings,
+    data_quality_settings,
+    diagnostic_settings,
+)
+from ictus_dagster.adapters.workflow_registry import (
+    SUPPORTED_CAPABILITIES,
+    capabilities_for_job,
+)
 
 __all__ = [
     "UnsupportedCapability",
@@ -26,31 +38,10 @@ __all__ = [
     "diagnostic_settings_from_intent",
 ]
 
-# Capabilities executed by the generic `capability_execution_job`
-# (prepare -> execute -> verify -> finalize).
-CAPABILITY_WORKFLOW_CAPABILITIES = {
-    "demo.verify",
-    "software.verify",
-}
-
-# Capabilities executed by the `data_quality_job`
-# (ingest -> profile -> check -> publish). A deliberately non-software domain,
-# to demonstrate that the generic core is domain-independent.
-DATA_QUALITY_CAPABILITIES = {
-    "data.quality_check",
-}
-
-# Capabilities executed by the `system_diagnostic_job`
-# (collect -> inspect -> classify -> report). A third domain workflow.
-SYSTEM_DIAGNOSTIC_CAPABILITIES = {
-    "system.diagnose",
-}
-
-SUPPORTED_CAPABILITIES = (
-    CAPABILITY_WORKFLOW_CAPABILITIES
-    | DATA_QUALITY_CAPABILITIES
-    | SYSTEM_DIAGNOSTIC_CAPABILITIES
-)
+# Capabilities executed by each workflow job (derived from the registry).
+CAPABILITY_WORKFLOW_CAPABILITIES = capabilities_for_job("capability_execution_job")
+DATA_QUALITY_CAPABILITIES = capabilities_for_job("data_quality_job")
+SYSTEM_DIAGNOSTIC_CAPABILITIES = capabilities_for_job("system_diagnostic_job")
 
 # Capabilities that are recognised but must be executed by a different backend.
 KNOWN_UNSUPPORTED = {
@@ -65,47 +56,6 @@ def _arguments(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(arguments, dict):
         raise UnsupportedCapability("intent arguments must be a JSON object")
     return arguments
-
-
-def _as_int(value: Any, default: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _as_bool(value: Any, default: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes"}
-    if value is None:
-        return default
-    return bool(value)
-
-
-def capability_settings(arguments: dict[str, Any]) -> dict[str, Any]:
-    """Settings for the generic capability workflow."""
-    return {
-        # Deterministic failure injection. `fail_until_attempt=N` makes the
-        # execute step fail on attempts 1..N (proving retry), `fail_hard=true`
-        # makes it fail always (proving persisted failure).
-        "fail_until_attempt": _as_int(arguments.get("fail_until_attempt"), 0),
-        "fail_hard": _as_bool(arguments.get("fail_hard"), False),
-        "fail_verify": _as_bool(arguments.get("fail_verify"), False),
-    }
-
-
-def data_quality_settings(arguments: dict[str, Any]) -> dict[str, Any]:
-    """Settings for the data-quality workflow."""
-    return {
-        "dataset": str(arguments.get("dataset", "synthetic.orders")),
-        "rows": _as_int(arguments.get("rows"), 100),
-        "min_rows": _as_int(arguments.get("min_rows"), 1),
-        "fail_ingest": _as_bool(arguments.get("fail_ingest"), False),
-        "fail_until_attempt": _as_int(arguments.get("fail_until_attempt"), 0),
-        "fail_on_check": _as_bool(arguments.get("fail_on_check"), False),
-    }
 
 
 def settings_from_intent(payload: dict[str, Any]) -> dict[str, Any]:
@@ -132,17 +82,6 @@ def data_quality_settings_from_intent(payload: dict[str, Any]) -> dict[str, Any]
             f"capability '{capability}' is not a data-quality capability"
         )
     return data_quality_settings(_arguments(payload))
-
-
-def diagnostic_settings(arguments: dict[str, Any]) -> dict[str, Any]:
-    """Settings for the system-diagnostics workflow."""
-    return {
-        "target": str(arguments.get("target", "local")),
-        "samples": _as_int(arguments.get("samples"), 3),
-        "fail_collect": _as_bool(arguments.get("fail_collect"), False),
-        "fail_until_attempt": _as_int(arguments.get("fail_until_attempt"), 0),
-        "fail_classify": _as_bool(arguments.get("fail_classify"), False),
-    }
 
 
 def diagnostic_settings_from_intent(payload: dict[str, Any]) -> dict[str, Any]:

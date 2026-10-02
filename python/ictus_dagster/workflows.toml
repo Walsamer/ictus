@@ -1,0 +1,38 @@
+# Capability -> workflow routing table (data, not code).
+#
+# Each entry maps a validated capability to the Dagster job that executes it,
+# the resource key/class used to configure that job, and the named settings
+# mapper that turns the intent's `arguments` into resource config.
+#
+# Adding a capability that reuses an existing workflow is a data-only change:
+# add an entry here. A genuinely new workflow needs a job/resource/mapper,
+# registered in `adapters/workflow_registry.py`.
+#
+# The referenced names are validated against code tables at import time; an
+# unknown name fails closed. The set of capabilities here must equal
+# `SUPPORTED_CAPABILITIES`.
+version = 1
+
+[[workflow]]
+capability = "demo.verify"
+job = "capability_execution_job"
+resource = "settings"
+settings = "capability"
+
+[[workflow]]
+capability = "software.verify"
+job = "capability_execution_job"
+resource = "settings"
+settings = "capability"
+
+[[workflow]]
+capability = "data.quality_check"
+job = "data_quality_job"
+resource = "dq_settings"
+settings = "data_quality"
+
+[[workflow]]
+capability = "system.diagnose"
+job = "system_diagnostic_job"
+resource = "diag_settings"
+settings = "diagnostic"
