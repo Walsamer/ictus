@@ -76,3 +76,51 @@ impl ApprovalProvider for TokenApprovalProvider {
         self.satisfied.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ictus_core::{DecisionKind, ProviderMetadata, Subject};
+    use ictus_ports::ApprovalProvider;
+
+    fn proposal(required: Option<Vec<&str>>) -> DecisionProposal {
+        let mut proposal = DecisionProposal::new(
+            "p1",
+            DecisionKind::ExecuteCapability,
+            Subject::new("task", "t1"),
+            ProviderMetadata::rules("rules"),
+            "2026-10-01T00:00:00Z",
+        );
+        if let Some(tokens) = required {
+            proposal = proposal.with_argument("required_approvals", serde_json::json!(tokens));
+        }
+        proposal
+    }
+
+    #[test]
+    fn never_and_always_providers() {
+        assert!(!NeverApproved.is_approved(&proposal(None)));
+        assert!(AlwaysApproved.is_approved(&proposal(None)));
+        assert!(NeverApproved.satisfied_approvals().is_empty());
+        assert_eq!(AlwaysApproved.satisfied_approvals(), vec!["*".to_string()]);
+    }
+
+    #[test]
+    fn proposal_without_required_approvals_is_approved() {
+        assert!(TokenApprovalProvider::new(vec![]).is_approved(&proposal(None)));
+    }
+
+    #[test]
+    fn token_provider_requires_every_token() {
+        let provider = TokenApprovalProvider::new(vec![]).with("human");
+        assert!(provider.is_approved(&proposal(Some(vec!["human"]))));
+        assert!(!provider.is_approved(&proposal(Some(vec!["human", "security"]))));
+        assert_eq!(provider.satisfied_approvals(), vec!["human".to_string()]);
+    }
+
+    #[test]
+    fn wildcard_approval_satisfies_everything() {
+        let provider = TokenApprovalProvider::new(vec![]).with("*");
+        assert!(provider.is_approved(&proposal(Some(vec!["human", "security"]))));
+    }
+}

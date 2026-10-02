@@ -77,3 +77,33 @@ fn result_maps_to_an_observation_fact() {
     assert_eq!(observation.category, ObservationCategory::Success);
     observation.validate().unwrap();
 }
+
+#[test]
+fn command_string_splits_program_and_args() {
+    let backend =
+        JsonStdioBackend::from_command_str("uv run --frozen python -m ictus_dagster.bridge");
+    assert_eq!(backend.program(), "uv");
+    assert_eq!(
+        backend.args(),
+        &["run", "--frozen", "python", "-m", "ictus_dagster.bridge"]
+    );
+}
+
+#[test]
+fn single_token_and_empty_command_strings() {
+    let single = JsonStdioBackend::from_command_str("my-backend");
+    assert_eq!(single.program(), "my-backend");
+    assert!(single.args().is_empty());
+
+    let empty = JsonStdioBackend::from_command_str("   ");
+    assert_eq!(empty.program(), "uv");
+    assert!(empty.args().is_empty());
+}
+
+#[test]
+fn default_bridge_command_is_stable() {
+    assert_eq!(
+        JsonStdioBackend::DEFAULT_BRIDGE_COMMAND,
+        "uv run --frozen python -m ictus_dagster.bridge"
+    );
+}

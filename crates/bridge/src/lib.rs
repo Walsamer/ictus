@@ -39,6 +39,10 @@ pub struct JsonStdioBackend {
 }
 
 impl JsonStdioBackend {
+    /// The default backend command when `ICTUS_DAGSTER_BRIDGE_CMD` is unset.
+    pub const DEFAULT_BRIDGE_COMMAND: &'static str =
+        "uv run --frozen python -m ictus_dagster.bridge";
+
     pub fn new(program: impl Into<String>, args: Vec<String>) -> Self {
         Self {
             program: program.into(),
@@ -46,18 +50,36 @@ impl JsonStdioBackend {
         }
     }
 
+    /// Parse a whitespace-separated command line into a backend.
+    ///
+    /// Exposed separately from [`from_env`](Self::from_env) so the parsing is
+    /// deterministically testable without mutating process environment.
+    pub fn from_command_str(raw: &str) -> Self {
+        let mut parts = raw.split_whitespace();
+        let program = parts.next().unwrap_or("uv").to_string();
+        let args = parts.map(str::to_string).collect();
+        Self { program, args }
+    }
+
     /// Resolve the backend command from `ICTUS_DAGSTER_BRIDGE_CMD`, falling
-    /// back to `uv run --frozen python -m ictus_dagster.bridge`.
+    /// back to [`DEFAULT_BRIDGE_COMMAND`](Self::DEFAULT_BRIDGE_COMMAND).
     ///
     /// The command is intentionally overridable so the same Rust boundary can
     /// drive a different (e.g. enterprise) adapter without a code change.
     pub fn from_env() -> Self {
         let raw = std::env::var("ICTUS_DAGSTER_BRIDGE_CMD")
-            .unwrap_or_else(|_| "uv run --frozen python -m ictus_dagster.bridge".to_string());
-        let mut parts = raw.split_whitespace();
-        let program = parts.next().unwrap_or("uv").to_string();
-        let args = parts.map(str::to_string).collect();
-        Self { program, args }
+            .unwrap_or_else(|_| Self::DEFAULT_BRIDGE_COMMAND.to_string());
+        Self::from_command_str(&raw)
+    }
+
+    /// The program the backend will spawn.
+    pub fn program(&self) -> &str {
+        &self.program
+    }
+
+    /// The program arguments.
+    pub fn args(&self) -> &[String] {
+        &self.args
     }
 }
 

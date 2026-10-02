@@ -57,4 +57,29 @@ mod tests {
         assert!(!registry.contains("missing"));
         assert_eq!(registry.get("demo.verify").unwrap().version, "1");
     }
+
+    #[test]
+    fn empty_registry_is_empty() {
+        let registry = InMemoryCapabilityRegistry::new();
+        assert!(registry.list().is_empty());
+        assert!(!registry.contains("anything"));
+        assert!(registry.get("anything").is_none());
+    }
+
+    #[test]
+    fn from_capabilities_and_list_preserve_order() {
+        let registry = InMemoryCapabilityRegistry::from_capabilities(vec![
+            Capability::new("a", "1", RiskClass::Low),
+            Capability::new("b", "1", RiskClass::High),
+        ]);
+        assert_eq!(
+            registry
+                .list()
+                .iter()
+                .map(|c| c.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert_eq!(registry.get("b").unwrap().risk_class, RiskClass::High);
+    }
 }
