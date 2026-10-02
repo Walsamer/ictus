@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "snapshot_id": "snap-diag-0001",
+  "timestamp": "2026-10-02T00:00:00Z",
+  "domain": "system",
+  "subject": { "type": "host", "id": "node-1" },
+  "facts": [
+    { "key": "observation.category", "value": "PROCESS_CRASH" },
+    { "key": "retry.attempt", "value": 0 },
+    { "key": "retry.budget", "value": 2 },
+    { "key": "capability.id", "value": "system.diagnose" }
+  ],
+  "capabilities": ["system.diagnose"],
+  "constraints": []
+}

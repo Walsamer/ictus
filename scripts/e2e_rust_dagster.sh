@@ -7,6 +7,7 @@
 #    to fail twice, proving Dagster's retry is observed through the boundary.
 # 3. the second, non-software domain (data quality) runs through the same core,
 #    proving the core does not depend on a software-engineering domain.
+# 4. the third domain (system diagnostics) runs through the same core as well.
 #
 # stdout from the Rust binary is pure JSON (Dagster logs go to stderr).
 set -euo pipefail
@@ -44,6 +45,10 @@ echo "== flow: second (non-software) domain through the same core =="
 "$BRIDGE" flow --approve < examples/state-snapshot.data-quality.json | tee /tmp/ictus-data-quality.json
 
 echo
+echo "== flow: third domain (system diagnostics) through the same core =="
+"$BRIDGE" flow --approve < examples/state-snapshot.system-diagnostic.json | tee /tmp/ictus-system-diagnostic.json
+
+echo
 echo "== types produced by the Rust boundary =="
 "$PYTHON" - <<'PY'
 import json
@@ -51,6 +56,7 @@ for label, path in (
     ("flow", "/tmp/ictus-flow.json"),
     ("execute", "/tmp/ictus-execute.json"),
     ("data-quality", "/tmp/ictus-data-quality.json"),
+    ("system-diagnostic", "/tmp/ictus-system-diagnostic.json"),
 ):
     data = json.load(open(path))
     assert data["schema_version"] == 1, label
@@ -61,5 +67,9 @@ assert flow["execution_result"]["status"] == "succeeded", flow
 dq = json.load(open("/tmp/ictus-data-quality.json"))
 assert dq["execution_intent"]["capability"] == "data.quality_check", dq
 assert dq["execution_result"]["status"] == "succeeded", dq
+
+diag = json.load(open("/tmp/ictus-system-diagnostic.json"))
+assert diag["execution_intent"]["capability"] == "system.diagnose", diag
+assert diag["execution_result"]["status"] == "succeeded", diag
 print("e2e: OK")
 PY

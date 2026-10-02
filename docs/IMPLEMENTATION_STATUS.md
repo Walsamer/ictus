@@ -49,11 +49,13 @@ authorized the capability, and adding a workflow never adds authorization code.
 | Capability | Workflow | Domain |
 | --- | --- | --- |
 | `demo.verify`, `software.verify` | `capability_execution_job` (`prepare→execute→verify→finalize`) | software-engineering |
-| `data.quality_check` | `data_quality_job` (`ingest→profile→check→publish`) | data quality (non-software) |
+| `data.quality_check` | `data_quality_job` (`ingest→profile→check→publish`) | data quality |
+| `system.diagnose` | `system_diagnostic_job` (`collect→inspect→classify→report`) | system diagnostics |
 
-The second workflow is deliberate evidence that the generic core, contracts and
-bridge are domain-independent (`examples/data-quality-demo/`, and the
-data-quality leg of `scripts/e2e_rust_dagster.sh`).
+The second and third workflows are deliberate evidence that the generic core,
+contracts and bridge are domain-independent (`examples/data-quality-demo/`,
+`examples/system-diagnostic-demo/`, and both legs of
+`scripts/e2e_rust_dagster.sh`).
 
 ## State ownership
 

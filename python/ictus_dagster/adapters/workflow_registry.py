@@ -19,10 +19,13 @@ from ictus_dagster.adapters.errors import UnsupportedCapability
 from ictus_dagster.adapters.intent_config import (
     capability_settings,
     data_quality_settings,
+    diagnostic_settings,
 )
 from ictus_dagster.jobs.capability_job import capability_execution_job
 from ictus_dagster.jobs.data_quality_job import data_quality_job
+from ictus_dagster.jobs.system_diagnostic_job import system_diagnostic_job
 from ictus_dagster.resources.data_quality_settings import DataQualitySettings
+from ictus_dagster.resources.diagnostic_settings import DiagnosticSettings
 from ictus_dagster.resources.execution_settings import ExecutionSettings
 
 SettingsMapper = Callable[[dict[str, Any]], dict[str, Any]]
@@ -60,6 +63,13 @@ WORKFLOW_SPECS: tuple[WorkflowSpec, ...] = (
         "dq_settings",
         DataQualitySettings,
         data_quality_settings,
+    ),
+    WorkflowSpec(
+        "system.diagnose",
+        system_diagnostic_job,
+        "diag_settings",
+        DiagnosticSettings,
+        diagnostic_settings,
     ),
 )
 

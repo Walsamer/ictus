@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -56,6 +57,21 @@ def test_execute_intent_reports_failure_without_raising() -> None:
     )
     assert result["status"] == "failed"
     assert result["observation"]["category"] == "PROCESS_CRASH"
+
+
+def test_execute_system_diagnose_capability_returns_success() -> None:
+    payload = _intent("system.diagnose", {"target": "node-1", "samples": 4})
+    result = bridge.execute_intent(payload, instance=DagsterInstance.ephemeral())
+    assert result["status"] == "succeeded"
+    assert result["observation"]["category"] == "SUCCESS"
+    assert any(item["kind"] == "dagster_run" for item in result["evidence"])
+
+
+def test_execute_system_diagnose_classify_failure_maps_to_verification_failure() -> None:
+    payload = _intent("system.diagnose", {"fail_classify": True})
+    result = bridge.execute_intent(payload, instance=DagsterInstance.ephemeral())
+    assert result["status"] == "failed"
+    assert result["observation"]["category"] == "VERIFICATION_FAILURE"
 
 
 def test_unsupported_capability_fails_closed() -> None:
@@ -120,3 +136,61 @@ def test_validate_intent_rejects_wrong_version() -> None:
     payload["schema_version"] = 2
     with pytest.raises(ContractError, match="unsupported schema_version"):
         bridge.execute_intent(payload, instance=DagsterInstance.ephemeral())
+
+
+# -- bridge.main in-process (the CLI entry point) ---------------------------
+
+
+def test_main_returns_zero_and_prints_a_result(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("DAGSTER_HOME", raising=False)
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(_intent())))
+    assert bridge.main([]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "succeeded"
+
+
+def test_main_returns_2_on_invalid_json(monkeypatch, capsys) -> None:
+    monkeypatch.setattr("sys.stdin", io.StringIO("{not json"))
+    assert bridge.main([]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "error:" in captured.err
+
+
+def test_main_returns_2_on_unsupported_capability(monkeypatch, capsys) -> None:
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(_intent("software.promote"))))
+    assert bridge.main([]) == 2
+    assert "error:" in capsys.readouterr().err
+
+
+def test_main_returns_1_on_unexpected_backend_failure(monkeypatch, capsys) -> None:
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(_intent())))
+    monkeypatch.setattr(bridge, "execute_intent", boom)
+    assert bridge.main([]) == 1
+    assert "backend failure" in capsys.readouterr().err
+
+
+def test_module_entrypoint_runs_main(monkeypatch) -> None:
+    import runpy
+
+    monkeypatch.delenv("DAGSTER_HOME", raising=False)
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(_intent())))
+    with pytest.raises(SystemExit) as excinfo:
+        runpy.run_module("ictus_dagster.bridge", run_name="__main__")
+    assert excinfo.value.code == 0
+
+
+# -- instance selection -----------------------------------------------------
+
+
+def test_instance_is_ephemeral_without_dagster_home(monkeypatch) -> None:
+    monkeypatch.delenv("DAGSTER_HOME", raising=False)
+    assert bridge._instance() is not None
+
+
+def test_instance_uses_dagster_home_when_set(monkeypatch, tmp_path) -> None:
+    (tmp_path / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
+    monkeypatch.setenv("DAGSTER_HOME", str(tmp_path))
+    assert bridge._instance() is not None

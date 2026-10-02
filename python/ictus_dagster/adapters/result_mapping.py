@@ -26,6 +26,11 @@ FAILED_STEP_CATEGORY = {
     "profile_op": "PROCESS_CRASH",
     "check_op": "VERIFICATION_FAILURE",
     "publish_op": "UNKNOWN",
+    # system-diagnostics workflow
+    "collect_op": "UNKNOWN",
+    "inspect_op": "PROCESS_CRASH",
+    "classify_op": "VERIFICATION_FAILURE",
+    "report_op": "UNKNOWN",
 }
 
 

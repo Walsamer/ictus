@@ -80,6 +80,27 @@ def test_data_quality_step_categories() -> None:
     )
 
 
+def test_system_diagnostic_step_categories() -> None:
+    assert (
+        execution_result_from_run(
+            execution_id="e", intent_id="i", success=False, failed_step="classify_op"
+        )["observation"]["category"]
+        == "VERIFICATION_FAILURE"
+    )
+    assert (
+        execution_result_from_run(
+            execution_id="e", intent_id="i", success=False, failed_step="inspect_op"
+        )["observation"]["category"]
+        == "PROCESS_CRASH"
+    )
+    assert (
+        execution_result_from_run(
+            execution_id="e", intent_id="i", success=False, failed_step="collect_op"
+        )["observation"]["category"]
+        == "UNKNOWN"
+    )
+
+
 def test_unknown_failed_step_and_missing_step_map_to_unknown() -> None:
     assert (
         execution_result_from_run(

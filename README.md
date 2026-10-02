@@ -132,7 +132,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 
-# Python / Dagster
+# Python / Dagster (enforces >= 99% coverage)
 uv sync --frozen
 uv run --frozen pytest -q
 
@@ -170,9 +170,10 @@ Early (v0.1.0). The generic foundation is implemented:
 - typed, versioned contracts and a deterministic policy core (M2)
 - a generic Dagster durable-execution backend with retry/re-execution (M1)
 - a versioned Rust ↔ Dagster bridge (M3)
-- two domain workflows through the same core: a software-engineering capability
-  workflow and a **non-software data-quality workflow** (evidence that the core
-  is domain-independent)
+- **three** domain workflows through the same core: a software-engineering
+  capability workflow, a data-quality workflow and a system-diagnostics
+  workflow (evidence that the core is domain-independent)
+- enforced coverage thresholds: Python ≥ 99%, Rust ≥ 95% of lines
 
 Domain-adapter runtime integration is deliberately **not** started. See
 [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) for what exists,

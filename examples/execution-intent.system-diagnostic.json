@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "intent_id": "intent:diag-demo",
+  "capability": "system.diagnose",
+  "target": { "type": "host", "id": "node-1" },
+  "arguments": { "target": "node-1", "samples": 5, "fail_until_attempt": 1 },
+  "policy_context": { "snapshot_id": "snap-diag-0001", "domain": "system" },
+  "requested_by": { "provider": "rules.v1", "decision_id": "proposal:diag-demo" }
+}

@@ -109,6 +109,18 @@ project's own record; they do not modify the supplied architecture documents in
   `examples/data-quality-demo/`, and the data-quality leg of
   `scripts/e2e_rust_dagster.sh`.
 
+## DEC-010 — a third domain workflow (system diagnostics)
+
+- **Decision:** add `system_diagnose` (`collect→inspect→classify→report`) so
+  capability routing is genuinely multi-way, not a single special case.
+- **Why:** two workflows can be dismissed as a one-off; three distinct shapes
+  (software capability, data quality, system diagnostics) make the routing
+  registry and the domain-independence claim structural.
+- **Evidence:** `python/ictus_dagster/jobs/system_diagnostic_job.py`,
+  `tests/python/test_system_diagnostic_job.py`,
+  `tests/python/test_workflow_registry.py`, `examples/system-diagnostic-demo/`,
+  and the system-diagnostics leg of `scripts/e2e_rust_dagster.sh`.
+
 ## Open decisions (not yet made)
 
 - **License holder scope.** Apache-2.0 is adopted with the copyright holder

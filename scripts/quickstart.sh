@@ -16,7 +16,7 @@ if [ ! -f "$DAGSTER_HOME/dagster.yaml" ]; then
     printf 'telemetry:\n  enabled: false\n' > "$DAGSTER_HOME/dagster.yaml"
 fi
 
-echo "== 1/4 build (cargo + uv) =="
+echo "== 1/5 build (cargo + uv) =="
 cargo build -q -p ictus-bridge
 uv sync --frozen >/dev/null
 if [ -x "$PWD/.venv/bin/python" ]; then
@@ -26,16 +26,20 @@ else
 fi
 
 echo
-echo "== 2/4 typed decision + policy (no Dagster) =="
+echo "== 2/5 typed decision + policy (no Dagster) =="
 ./target/debug/ictus decide --approve < examples/state-snapshot.worker-timeout.json
 
 echo
-echo "== 3/4 Rust -> Dagster -> Rust end to end =="
+echo "== 3/5 Rust -> Dagster -> Rust end to end =="
 ./scripts/e2e_rust_dagster.sh
 
 echo
-echo "== 4/4 second domain (data quality) through the same core =="
+echo "== 4/5 second domain (data quality) through the same core =="
 ./target/debug/ictus flow --approve < examples/state-snapshot.data-quality.json
+
+echo
+echo "== 5/5 third domain (system diagnostics) through the same core =="
+./target/debug/ictus flow --approve < examples/state-snapshot.system-diagnostic.json
 
 echo
 echo "quickstart: OK"

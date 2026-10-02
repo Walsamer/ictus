@@ -201,6 +201,25 @@ fn decide_data_quality_capability_is_allowed() {
     assert_eq!(trace["execution_intent"]["target"]["type"], "task");
 }
 
+#[test]
+fn decide_system_diagnose_capability_is_allowed() {
+    // The third (system diagnostics) domain goes through the same core.
+    let out = run(
+        &["decide", "--approve"],
+        &snapshot("PROCESS_CRASH", 0, 2, "system.diagnose"),
+        &[],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let trace = stdout_json(&out);
+    assert_eq!(trace["proposal"]["decision"], "RETRY");
+    assert_eq!(trace["execution_intent"]["capability"], "system.diagnose");
+}
+
 // -- execute ----------------------------------------------------------------
 
 #[test]
@@ -308,4 +327,33 @@ fn help_and_unknown_subcommand() {
     let unknown = run(&["frobnicate"], "", &[]);
     assert_eq!(unknown.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&unknown.stderr).contains("unknown subcommand"));
+}
+
+#[test]
+fn decide_rejects_invalid_capabilities_json() {
+    let path = std::env::temp_dir().join(format!("ictus-bad-caps-{}.json", std::process::id()));
+    std::fs::write(&path, "{not json").unwrap();
+    let out = run(
+        &["decide", "--capabilities", path.to_str().unwrap()],
+        &snapshot("WORKER_TIMEOUT", 0, 1, "demo.verify"),
+        &[],
+    );
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("invalid capabilities JSON"));
+}
+
+#[test]
+fn execute_rejects_malformed_intent() {
+    let out = run(&["execute"], "{not json", &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("invalid ExecutionIntent JSON"));
+}
+
+#[test]
+fn flow_rejects_malformed_snapshot() {
+    let out = run(&["flow"], "{not json", &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("invalid StateSnapshot JSON"));
 }

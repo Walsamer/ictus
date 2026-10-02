@@ -15,12 +15,15 @@ __all__ = [
     "UnsupportedCapability",
     "CAPABILITY_WORKFLOW_CAPABILITIES",
     "DATA_QUALITY_CAPABILITIES",
+    "SYSTEM_DIAGNOSTIC_CAPABILITIES",
     "SUPPORTED_CAPABILITIES",
     "KNOWN_UNSUPPORTED",
     "capability_settings",
     "data_quality_settings",
+    "diagnostic_settings",
     "settings_from_intent",
     "data_quality_settings_from_intent",
+    "diagnostic_settings_from_intent",
 ]
 
 # Capabilities executed by the generic `capability_execution_job`
@@ -37,14 +40,23 @@ DATA_QUALITY_CAPABILITIES = {
     "data.quality_check",
 }
 
-SUPPORTED_CAPABILITIES = CAPABILITY_WORKFLOW_CAPABILITIES | DATA_QUALITY_CAPABILITIES
+# Capabilities executed by the `system_diagnostic_job`
+# (collect -> inspect -> classify -> report). A third domain workflow.
+SYSTEM_DIAGNOSTIC_CAPABILITIES = {
+    "system.diagnose",
+}
+
+SUPPORTED_CAPABILITIES = (
+    CAPABILITY_WORKFLOW_CAPABILITIES
+    | DATA_QUALITY_CAPABILITIES
+    | SYSTEM_DIAGNOSTIC_CAPABILITIES
+)
 
 # Capabilities that are recognised but must be executed by a different backend.
 KNOWN_UNSUPPORTED = {
     "software.implement",
     "software.promote",
     "data.materialize",
-    "system.diagnose",
 }
 
 
@@ -120,3 +132,24 @@ def data_quality_settings_from_intent(payload: dict[str, Any]) -> dict[str, Any]
             f"capability '{capability}' is not a data-quality capability"
         )
     return data_quality_settings(_arguments(payload))
+
+
+def diagnostic_settings(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Settings for the system-diagnostics workflow."""
+    return {
+        "target": str(arguments.get("target", "local")),
+        "samples": _as_int(arguments.get("samples"), 3),
+        "fail_collect": _as_bool(arguments.get("fail_collect"), False),
+        "fail_until_attempt": _as_int(arguments.get("fail_until_attempt"), 0),
+        "fail_classify": _as_bool(arguments.get("fail_classify"), False),
+    }
+
+
+def diagnostic_settings_from_intent(payload: dict[str, Any]) -> dict[str, Any]:
+    """Resource config for a system-diagnostics intent (validates capability)."""
+    capability = str(payload.get("capability", ""))
+    if capability not in SYSTEM_DIAGNOSTIC_CAPABILITIES:
+        raise UnsupportedCapability(
+            f"capability '{capability}' is not a system-diagnostics capability"
+        )
+    return diagnostic_settings(_arguments(payload))

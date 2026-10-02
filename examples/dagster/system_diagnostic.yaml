@@ -1,0 +1,6 @@
+# System-diagnostics workflow run config (third domain).
+resources:
+  diag_settings:
+    config:
+      target: node-1
+      samples: 5

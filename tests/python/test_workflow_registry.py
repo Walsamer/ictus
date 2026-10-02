@@ -9,6 +9,7 @@ from ictus_dagster.adapters.intent_config import (
     CAPABILITY_WORKFLOW_CAPABILITIES,
     DATA_QUALITY_CAPABILITIES,
     SUPPORTED_CAPABILITIES,
+    SYSTEM_DIAGNOSTIC_CAPABILITIES,
 )
 from ictus_dagster.adapters.workflow_registry import (
     WORKFLOWS,
@@ -42,6 +43,14 @@ def test_data_quality_capabilities_route_to_the_data_quality_job() -> None:
 def test_all_capability_workflow_capabilities_share_one_job() -> None:
     for capability in CAPABILITY_WORKFLOW_CAPABILITIES:
         assert resolve_workflow(capability).job.name == "capability_execution_job"
+
+
+def test_system_diagnostic_capabilities_route_to_the_diagnostic_job() -> None:
+    spec = resolve_workflow("system.diagnose")
+    assert spec.job.name == "system_diagnostic_job"
+    assert spec.resource_key == "diag_settings"
+    for capability in SYSTEM_DIAGNOSTIC_CAPABILITIES:
+        assert resolve_workflow(capability).job.name == "system_diagnostic_job"
 
 
 def test_unknown_capability_fails_closed() -> None:

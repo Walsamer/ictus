@@ -25,3 +25,9 @@ dagster_home/
 .env.*
 !.env.example
 .DS_Store
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
