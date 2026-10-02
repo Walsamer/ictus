@@ -28,12 +28,12 @@ fn run(args: &[&str], stdin: &str, env: &[(&str, &str)]) -> Output {
         command.env(key, value);
     }
     let mut child = command.spawn().expect("spawn ictus");
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    // A subcommand may exit before reading stdin (e.g. `--help`, an unknown
+    // argument). Writing then fails with BrokenPipe on Linux; that is expected
+    // and not a test failure, so the write error is intentionally ignored.
+    if let Some(mut pipe) = child.stdin.take() {
+        let _ = pipe.write_all(stdin.as_bytes());
+    }
     child.wait_with_output().unwrap()
 }
 
