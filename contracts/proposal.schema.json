@@ -2,18 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ictus.dev/contracts/proposal.schema.json",
   "title": "DecisionProposal",
-  "description": "An untrusted proposed bounded action, produced by any DecisionProvider (rules, model, LLM, human). It must pass policy/capability validation before it can become an ExecutionIntent.",
+  "description": "An untrusted proposed bounded action, produced by any DecisionProvider (rules, model, LLM, human). It must pass policy/capability validation before it can become an ExecutionIntent. Schema version 2 carries the frozen generic semantic vocabulary (docs/adr/0001-generic-decision-vocabulary.md); version 1 is accepted for the legacy vocabulary.",
   "type": "object",
   "required": ["schema_version", "proposal_id", "decision", "subject", "provider", "proposed_at"],
   "properties": {
-    "schema_version": { "const": 1 },
+    "schema_version": {
+      "type": "integer",
+      "enum": [1, 2],
+      "description": "1 = legacy vocabulary (RETRY/ABORT/ESCALATE/EXECUTE_CAPABILITY); 2 = frozen generic semantic vocabulary (REEXECUTE/ROUTE/DECOMPOSE/ESCALATE/ABORT/EXECUTE_CAPABILITY). RETRY on a v1 payload is normalized to REEXECUTE."
+    },
     "proposal_id": { "type": "string", "minLength": 1 },
     "decision": { "$ref": "#/$defs/decision" },
     "subject": { "$ref": "#/$defs/subject" },
     "capability": {
       "type": "string",
       "minLength": 1,
-      "description": "Required for RETRY and EXECUTE_CAPABILITY."
+      "description": "Required for REEXECUTE, EXECUTE_CAPABILITY and ROUTE."
+    },
+    "route": {
+      "$ref": "#/$defs/route",
+      "description": "Generic route constraints. Valid only for a ROUTE decision."
     },
     "arguments": { "type": "object" },
     "provider": { "$ref": "#/$defs/provider" },
@@ -21,10 +29,63 @@
     "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
     "proposed_at": { "type": "string", "format": "date-time" }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "schema_version": { "const": 1 } },
+        "required": ["schema_version"]
+      },
+      "then": {
+        "properties": {
+          "decision": { "type": "string", "enum": ["RETRY", "ABORT", "ESCALATE", "EXECUTE_CAPABILITY"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "schema_version": { "const": 2 } },
+        "required": ["schema_version"]
+      },
+      "then": {
+        "properties": {
+          "decision": { "type": "string", "enum": ["REEXECUTE", "ROUTE", "DECOMPOSE", "ESCALATE", "ABORT", "EXECUTE_CAPABILITY"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "decision": { "not": { "const": "ROUTE" } } },
+        "required": ["decision"]
+      },
+      "then": {
+        "properties": { "route": false }
+      }
+    }
+  ],
   "$defs": {
     "decision": {
       "type": "string",
-      "enum": ["RETRY", "ABORT", "ESCALATE", "EXECUTE_CAPABILITY"]
+      "description": "The frozen generic semantic vocabulary. RETRY is a v1-only legacy token accepted for compatibility.",
+      "enum": [
+        "REEXECUTE",
+        "ROUTE",
+        "DECOMPOSE",
+        "ESCALATE",
+        "ABORT",
+        "EXECUTE_CAPABILITY",
+        "RETRY"
+      ]
+    },
+    "route": {
+      "type": "object",
+      "description": "Generic route constraints for a ROUTE decision. Each constraint names a role (backend, provider, runtime), never a vendor or domain noun.",
+      "properties": {
+        "exclude_backend": { "type": "string", "minLength": 1 },
+        "preferred_backend": { "type": "string", "minLength": 1 },
+        "required_provider": { "type": "string", "minLength": 1 },
+        "required_runtime": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
     },
     "subject": {
       "type": "object",

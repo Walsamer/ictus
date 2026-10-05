@@ -163,6 +163,29 @@ explicit sign-off. Opening M4 does **not** open M5.
 - **Boundary unchanged:** the core owns no workflow state, Dagster owns durable
 execution, and Fleet owns Fleet state. M4 adds **no** runtime coupling.
 
+## DEC-014 — the generic semantic decision vocabulary is frozen, and the proposal contract is v2
+
+- **Decision:** adopt the generic semantic vocabulary
+  `REEXECUTE | ROUTE | DECOMPOSE | ESCALATE | ABORT | EXECUTE_CAPABILITY`;
+  freeze it in `docs/adr/0001-generic-decision-vocabulary.md`; and bump the
+  `DecisionProposal` contract to `schema_version: 2` (other contracts stay at
+  `1`). `RETRY` is retained only as a v1 input alias, normalized to
+  `REEXECUTE`.
+- **Why:** (a) `RETRY` conflated a semantic re-execution request with
+  Dagster's own step retry; (b) Fleet/Tactus needs generic routing and
+  decomposition decisions without importing Tactus lifecycle nouns
+  (`REQUEUE_READY`/`BLOCK`/`RETIRE`); (c) `REEXECUTE` yields a new
+  `ExecutionIntent`, while `DECOMPOSE` explicitly creates no child work items.
+- **Versioning:** `schema_version` is per-contract. The proposal's shape
+  changed (token set + `route` constraints), so it goes to v2. v1 payloads
+  remain readable and are rejected if they use v2-only tokens (`ROUTE`,
+  `DECOMPOSE`).
+- **Enforced by:** `crates/core/src/decision.rs`,
+  `crates/policy/src/{rules,evaluator,intent}.rs`,
+  `contracts/proposal.schema.json`, and the v1/v2 compatibility tests in
+  `crates/core/tests/contracts_api.rs` and
+  `tests/python/test_contracts_schemas.py`.
+
 ## Open decisions (not yet made)
 
 - **License holder scope.** Apache-2.0 is adopted with the copyright holder

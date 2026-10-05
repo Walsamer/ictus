@@ -24,6 +24,10 @@ SCHEMA_EXAMPLE_PAIRS = [
     ("execution-result.schema.json", "execution-result.demo-verify.json"),
 ]
 
+# Only the DecisionProposal contract was bumped (v2, generic semantic
+# vocabulary); its v1 payloads remain accepted. Every other contract stays v1.
+DECISION_PROPOSAL_VERSIONS = [1, 2]
+
 
 def _schemas() -> dict[str, dict]:
     return {
@@ -56,7 +60,60 @@ def test_all_contracts_are_versioned() -> None:
     for name, schema in _schemas().items():
         properties = schema.get("properties", {})
         assert "schema_version" in properties, f"{name} lacks schema_version"
-        assert properties["schema_version"] == {"const": 1}, name
+        if name == "proposal.schema.json":
+            assert properties["schema_version"]["enum"] == DECISION_PROPOSAL_VERSIONS, name
+        else:
+            assert properties["schema_version"] == {"const": 1}, name
+
+
+def _proposal_base(version: int, decision: str) -> dict:
+    return {
+        "schema_version": version,
+        "proposal_id": "proposal:x",
+        "decision": decision,
+        "subject": {"type": "task", "id": "t1"},
+        "provider": {"provider_type": "RULES", "provider_id": "rules.v1"},
+        "proposed_at": "2026-10-01T00:00:00Z",
+    }
+
+
+def test_v2_semantic_vocabulary_is_accepted() -> None:
+    validator = _validator("proposal.schema.json")
+    for decision in ("REEXECUTE", "ROUTE", "DECOMPOSE", "ESCALATE", "ABORT", "EXECUTE_CAPABILITY"):
+        validator.validate(_proposal_base(2, decision))
+    # The legacy token is v1-only; it must not be smuggled into a v2 payload.
+    with pytest.raises(ValidationError):
+        validator.validate(_proposal_base(2, "RETRY"))
+
+
+def test_v2_route_carries_generic_constraints() -> None:
+    payload = _proposal_base(2, "ROUTE")
+    payload["capability"] = "demo.verify"
+    payload["route"] = {
+        "exclude_backend": "backend.a",
+        "preferred_backend": "backend.b",
+        "required_provider": "provider.c",
+        "required_runtime": "wasm",
+    }
+    _validator("proposal.schema.json").validate(payload)
+
+
+def test_route_constraints_are_rejected_on_non_route_decisions() -> None:
+    payload = _proposal_base(2, "EXECUTE_CAPABILITY")
+    payload["capability"] = "demo.verify"
+    payload["route"] = {"preferred_backend": "backend.b"}
+    with pytest.raises(ValidationError):
+        _validator("proposal.schema.json").validate(payload)
+
+
+def test_v1_legacy_vocabulary_is_accepted_but_v2_tokens_are_not() -> None:
+    validator = _validator("proposal.schema.json")
+    # Legacy RETRY is accepted under v1...
+    validator.validate(_proposal_base(1, "RETRY"))
+    # ...but the v2-only tokens are not.
+    for decision in ("ROUTE", "DECOMPOSE"):
+        with pytest.raises(ValidationError):
+            validator.validate(_proposal_base(1, decision))
 
 
 def test_deny_policy_decision_with_intent_is_rejected() -> None:

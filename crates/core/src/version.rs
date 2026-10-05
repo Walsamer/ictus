@@ -4,8 +4,23 @@
 //! changes require a new version; adapters may support multiple versions during
 //! migration.
 
-/// The current schema version for every externally serialized payload.
+/// The current schema version for the base, unchanged externally serialized
+/// payloads (`StateSnapshot`, `ExecutionObservation`, `ExecutionIntent`,
+/// `ExecutionResult`, `PolicyDecision`).
 pub const SCHEMA_VERSION: u32 = 1;
+
+/// The current schema version of the `DecisionProposal` contract.
+///
+/// Bumped to `2` when the generic semantic decision vocabulary was frozen (see
+/// `docs/adr/0001-generic-decision-vocabulary.md`): `RETRY` was renamed to
+/// `REEXECUTE` and `ROUTE` / `DECOMPOSE` were added. `schema_version` is
+/// per-contract, so the base contracts stay at [`SCHEMA_VERSION`].
+pub const DECISION_SCHEMA_VERSION: u32 = 2;
+
+/// The original `DecisionProposal` schema version, still accepted on input for
+/// deliberate backward compatibility. A v1 proposal is normalized on read
+/// (`RETRY` -> `REEXECUTE`) and may not use the v2-only `ROUTE` / `DECOMPOSE`.
+pub const LEGACY_DECISION_SCHEMA_VERSION: u32 = 1;
 
 /// Errors produced while validating a contract.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

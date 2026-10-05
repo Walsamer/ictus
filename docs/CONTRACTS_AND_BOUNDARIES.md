@@ -65,16 +65,23 @@ Observations are facts, not decisions.
 
 Produced by any DecisionProvider.
 
-Examples:
+The frozen generic semantic vocabulary
+(`docs/adr/0001-generic-decision-vocabulary.md`) is:
 
 ```text
-Retry
-Abort
-Escalate
-ExecuteCapability
-Route
-Decompose
+REEXECUTE            # another semantic execution attempt; never a Dagster step retry
+ROUTE                # execute a capability with generic route constraints
+DECOMPOSE            # decompose the subject; Ictus creates no child work items
+ESCALATE
+ABORT
+EXECUTE_CAPABILITY
 ```
+
+A `ROUTE` may carry generic constraints (`exclude_backend`,
+`preferred_backend`, `required_provider`, `required_runtime`) that name roles,
+never vendors. The `DecisionProposal` contract is `schema_version: 2`; v1
+payloads (legacy `RETRY`) are accepted and normalized to `REEXECUTE`, and
+v2-only tokens are rejected under v1.
 
 A proposal is untrusted until validated.
 

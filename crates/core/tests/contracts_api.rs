@@ -9,7 +9,8 @@ use ictus_core::{
     Capability, ContractError, DecisionKind, DecisionProposal, EvidenceRef, ExecutionIntent,
     ExecutionObservation, ExecutionResult, ExecutionStatus, Fact, ObservationCategory,
     PolicyDecision, PolicyDecisionKind, ProviderMetadata, ProviderType, RequestedBy, RiskClass,
-    StateSnapshot, Subject, SCHEMA_VERSION,
+    RouteConstraints, StateSnapshot, Subject, DECISION_SCHEMA_VERSION,
+    LEGACY_DECISION_SCHEMA_VERSION, SCHEMA_VERSION,
 };
 
 fn subject() -> Subject {
@@ -39,6 +40,14 @@ fn make_proposal(decision: DecisionKind) -> DecisionProposal {
 #[test]
 fn schema_version_constant_is_one() {
     assert_eq!(SCHEMA_VERSION, 1);
+}
+
+#[test]
+fn decision_contract_is_v2_with_v1_legacy_support() {
+    assert_eq!(DECISION_SCHEMA_VERSION, 2);
+    assert_eq!(LEGACY_DECISION_SCHEMA_VERSION, 1);
+    // New proposals default to the current decision contract version.
+    assert_eq!(make_proposal(DecisionKind::Abort).schema_version, 2);
 }
 
 #[test]
@@ -186,9 +195,9 @@ fn provider_metadata_and_proposal_builders() {
 #[test]
 fn proposal_validation_rejects_bad_shapes() {
     // capability-requiring decision without a capability
-    assert!(make_proposal(DecisionKind::Retry).validate().is_err());
+    assert!(make_proposal(DecisionKind::Reexecute).validate().is_err());
     // empty capability string
-    assert!(make_proposal(DecisionKind::Retry)
+    assert!(make_proposal(DecisionKind::Reexecute)
         .with_capability("  ")
         .validate()
         .is_err());
@@ -208,7 +217,108 @@ fn decision_kinds_serialize_screaming_snake() {
         serde_json::to_value(DecisionKind::ExecuteCapability).unwrap(),
         "EXECUTE_CAPABILITY"
     );
+    assert_eq!(
+        serde_json::to_value(DecisionKind::Reexecute).unwrap(),
+        "REEXECUTE"
+    );
+    assert_eq!(serde_json::to_value(DecisionKind::Route).unwrap(), "ROUTE");
+    assert_eq!(
+        serde_json::to_value(DecisionKind::Decompose).unwrap(),
+        "DECOMPOSE"
+    );
     assert_eq!(serde_json::to_value(ProviderType::Human).unwrap(), "HUMAN");
+}
+
+#[test]
+fn v1_retry_token_is_normalized_to_reexecute() {
+    let proposal: DecisionProposal = serde_json::from_str(
+        r#"{
+            "schema_version": 1,
+            "proposal_id": "p1",
+            "decision": "RETRY",
+            "subject": { "type": "task", "id": "t1" },
+            "capability": "demo.verify",
+            "provider": { "provider_type": "RULES", "provider_id": "rules.v1" },
+            "proposed_at": "2026-10-01T00:00:00Z"
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(proposal.decision, DecisionKind::Reexecute);
+    proposal.validate().unwrap();
+    // v1 legacy proposals are still readable...
+    assert_eq!(proposal.schema_version, 1);
+}
+
+#[test]
+fn v1_payload_rejects_v2_only_decisions() {
+    for decision in [DecisionKind::Route, DecisionKind::Decompose] {
+        let mut proposal = make_proposal(decision);
+        proposal.schema_version = LEGACY_DECISION_SCHEMA_VERSION;
+        assert!(
+            proposal.validate().is_err(),
+            "{decision:?} must not be valid under v1"
+        );
+    }
+}
+
+#[test]
+fn unknown_proposal_version_is_rejected() {
+    let mut proposal = make_proposal(DecisionKind::Abort);
+    proposal.schema_version = DECISION_SCHEMA_VERSION + 1;
+    assert!(matches!(
+        proposal.validate(),
+        Err(ContractError::UnsupportedSchemaVersion { .. })
+    ));
+}
+
+#[test]
+fn capability_requirements_are_exhaustive() {
+    for decision in [DecisionKind::Reexecute, DecisionKind::Route] {
+        assert!(make_proposal(decision).requires_capability());
+    }
+    for decision in [
+        DecisionKind::Abort,
+        DecisionKind::Escalate,
+        DecisionKind::Decompose,
+    ] {
+        assert!(!make_proposal(decision).requires_capability());
+    }
+}
+
+#[test]
+fn route_constraints_are_generic_and_round_trip() {
+    let route = RouteConstraints::new()
+        .with_exclude_backend("backend.a")
+        .with_preferred_backend("backend.b")
+        .with_required_provider("provider.c")
+        .with_required_runtime("wasm");
+    assert!(!route.is_empty());
+    let proposal = make_proposal(DecisionKind::Route)
+        .with_capability("demo.verify")
+        .with_route(route);
+    proposal.validate().unwrap();
+    let value = serde_json::to_value(&proposal).unwrap();
+    assert_eq!(value["route"]["exclude_backend"], "backend.a");
+    assert_eq!(value["route"]["required_runtime"], "wasm");
+    let decoded: DecisionProposal = serde_json::from_value(value).unwrap();
+    assert_eq!(decoded, proposal);
+}
+
+#[test]
+fn route_constraints_on_a_non_route_decision_are_rejected() {
+    let proposal = make_proposal(DecisionKind::ExecuteCapability)
+        .with_capability("demo.verify")
+        .with_route(RouteConstraints::new().with_preferred_backend("backend.b"));
+    assert!(proposal.validate().is_err());
+}
+
+#[test]
+fn blank_route_constraint_is_rejected() {
+    let proposal = make_proposal(DecisionKind::Route)
+        .with_capability("demo.verify")
+        .with_route(RouteConstraints::new().with_required_provider("  "));
+    assert!(proposal.validate().is_err());
+    assert!(RouteConstraints::new().is_empty());
 }
 
 // -- observation ------------------------------------------------------------

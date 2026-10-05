@@ -24,10 +24,14 @@ pub mod snapshot;
 pub mod version;
 
 pub use capability::{Capability, RiskClass};
-pub use decision::{DecisionKind, DecisionProposal, ProviderMetadata, ProviderType};
+pub use decision::{
+    DecisionKind, DecisionProposal, ProviderMetadata, ProviderType, RouteConstraints,
+};
 pub use evidence::EvidenceRef;
 pub use execution::{ExecutionIntent, ExecutionResult, ExecutionStatus, RequestedBy};
 pub use observation::{ExecutionObservation, ObservationCategory};
 pub use policy::{PolicyDecision, PolicyDecisionKind};
 pub use snapshot::{Fact, StateSnapshot, Subject};
-pub use version::{ContractError, SCHEMA_VERSION};
+pub use version::{
+    ContractError, DECISION_SCHEMA_VERSION, LEGACY_DECISION_SCHEMA_VERSION, SCHEMA_VERSION,
+};

@@ -8,7 +8,7 @@ use ictus_core::{
     Capability, DecisionKind, DecisionProposal, EvidenceRef, ExecutionIntent, ExecutionObservation,
     ExecutionResult, ExecutionStatus, Fact, ObservationCategory, PolicyDecision,
     PolicyDecisionKind, ProviderMetadata, RequestedBy, RiskClass, StateSnapshot, Subject,
-    SCHEMA_VERSION,
+    DECISION_SCHEMA_VERSION, SCHEMA_VERSION,
 };
 use proptest::prelude::*;
 
@@ -110,10 +110,15 @@ proptest! {
             serde_json::to_value(&observation).unwrap(),
             serde_json::to_value(&intent).unwrap(),
             serde_json::to_value(&result).unwrap(),
-            serde_json::to_value(make_proposal(proposal)).unwrap(),
         ] {
             prop_assert_eq!(value["schema_version"].as_u64(), Some(SCHEMA_VERSION as u64));
         }
+        // The DecisionProposal contract is versioned independently and is at v2.
+        let proposal = serde_json::to_value(make_proposal(proposal)).unwrap();
+        prop_assert_eq!(
+            proposal["schema_version"].as_u64(),
+            Some(DECISION_SCHEMA_VERSION as u64)
+        );
     }
 }
 
@@ -190,8 +195,19 @@ proptest! {
             DecisionProposal::new("p", DecisionKind::ExecuteCapability, subject, provider, "t");
         prop_assert!(proposal.validate().is_err());
 
-        let retry = DecisionProposal::new("p", DecisionKind::Retry, proposal.subject.clone(), proposal.provider.clone(), "t");
+        let retry = DecisionProposal::new("p", DecisionKind::Reexecute, proposal.subject.clone(), proposal.provider.clone(), "t");
         prop_assert!(retry.validate().is_err());
+    }
+
+    #[test]
+    fn every_capability_requiring_decision_requires_a_capability(
+        subject in arb_subject(),
+        provider in arb_provider(),
+    ) {
+        for decision in [DecisionKind::Reexecute, DecisionKind::Route] {
+            let proposal = DecisionProposal::new("p", decision, subject.clone(), provider.clone(), "t");
+            prop_assert!(proposal.validate().is_err());
+        }
     }
 
     #[test]

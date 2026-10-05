@@ -36,7 +36,7 @@ fn registry() -> InMemoryCapabilityRegistry {
 fn full_recovery_flow_produces_a_typed_intent() {
     let snapshot = recovery_snapshot("WORKER_TIMEOUT", 0, 2);
     let proposal = RuleDecisionProvider::new().propose(&snapshot).unwrap();
-    assert_eq!(proposal.decision, DecisionKind::Retry);
+    assert_eq!(proposal.decision, DecisionKind::Reexecute);
 
     let policy_decision = DefaultPolicyEvaluator::new()
         .evaluate(&snapshot, &proposal, &registry(), &AlwaysApproved)

@@ -50,7 +50,7 @@ def test_full_flow_snapshot_to_result(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     trace = json.loads(proc.stdout)
 
-    assert trace["proposal"]["decision"] == "RETRY"
+    assert trace["proposal"]["decision"] == "REEXECUTE"
     assert trace["policy_decision"]["decision"] == "ALLOW"
     assert trace["execution_intent"]["capability"] == "demo.verify"
     assert trace["execution_result"]["status"] == "succeeded"
