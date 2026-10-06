@@ -1,3 +1,8 @@
+> Implemented main-wire reference at `833175d`. Baseline v1 integration requirements
+> and missing authorization/context semantics are tracked in
+> [reconciliation](architecture/BASELINE_V1_RECONCILIATION.md). Do not treat a valid
+> wire shape as proof of policy authorization.
+
 # Contracts and Boundaries
 
 ## 1. Core contracts

@@ -1,136 +1,38 @@
-# Implementation status (M0–M3)
+# Implementation status — Baseline v1 inspection
 
-Scope of this document: what actually exists in the repository today, mapped to
-the roadmap in [`ROADMAP.md`](ROADMAP.md) and
-[`MIGRATION_PLAN.md`](MIGRATION_PLAN.md). The supplied architecture documents are
-the source of truth for intent; this file is the honest status of the code.
+Inspected main: `833175d88adeed59f8e62c14c5e5577580cfdf33`, 2026-10-06.
+Historical M0–M3 completion referred to repository foundation, Dagster demos,
+typed core and stdio bridge. Those numbers are not the new shared milestones.
 
-## Milestones
+## Implemented and retained
 
-| Milestone | Status | Evidence |
-| --- | --- | --- |
-| **M0 — repository foundation** | done | Rust workspace, Python package, `contracts/`, CI, `scripts/verify.sh`, docs |
-| **M1 — Dagster OSS durable execution demo** | done | `python/ictus_dagster/` (two workflows), `scripts/demo_durable_execution.sh`, `tests/python/test_dagster_durability.py` |
-| **M2 — typed Rust core** | done | `crates/core`, `crates/policy`, `crates/ports`; deterministic rules and policy |
-| **M3 — generic Rust ↔ Dagster bridge** | done | `crates/bridge`, `python/ictus_dagster/bridge.py`, `scripts/e2e_rust_dagster.sh`, `tests/python/test_rust_bridge_e2e.py` |
-| **M4 — domain adapter discovery** | **active (design-only)** — Fleet `FLEET-V3-WO-193` | draft ADR + checklist + adapter interface in the Fleet repo |
-| **M5 — domain verification shadow mode** | **gated** (not started) | requires the M4 ADR accepted + operator sign-off |
+- Rust generic core, ports, adapters, deterministic rules/policy and JSON schemas.
+- Software-engineering, data-quality and system-diagnostic example workflows.
+- Python Dagster bridge, capability/job mapping, normalized result observations.
+- Persistent DAGSTER_HOME mode and durability/re-execution demo; ephemeral fallback.
+- Format/lint/unit/property tests, Python coverage gate, Rust coverage and mutation CI.
 
-## Architecture as implemented
+## Integration-only candidate
 
-```text
-StateSnapshot ──> DecisionProvider ──> DecisionProposal
-                                          │
-                                          v
-                               DefaultPolicyEvaluator
-                                          │
-                             PolicyDecision (+ ExecutionIntent)
-                                          │
-                        JsonStdioBackend (crates/bridge)
-                                          │  JSON / stdin-stdout
-                                          v
-                       ictus_dagster.bridge (Dagster OSS)
-                                          │
-                     resolve_workflow(capability)  [execution-side]
-                    ┌─────────────────────┴─────────────────────┐
-        capability_execution_job                  data_quality_job
-   prepare→execute→verify→finalize          ingest→profile→check→publish
-                                          │
-                                          v
-                                  ExecutionResult
-```
+Commit `5ee42ea5602703b8aafd8cab9b88e3feb8347087` on a local Fleet integration ref
+adds generic decision vocabulary, DecisionProposal v2 and RETRY v1 compatibility.
+It is not in inspected GitHub main. Preserve and review it through a dedicated
+implementation PR; architecture documentation does not promote that commit.
 
-Capability → workflow routing is **execution-side** (see
-[`DECISIONS.md`](DECISIONS.md) DEC-008): the Rust policy layer has already
-authorized the capability, and adding a workflow never adds authorization code.
+## Missing for the complete Tactus path
 
-### Domain workflows shipped
+- Versioned initial/recovery context profile and aligned semantic-budget facts.
+- Validated decision/intent binding to subject, revision, policy and real grants.
+- Actual compatibility/route selection and semantic recovery policy using facts.
+- Persistent asynchronous submission, receipt/reconciliation and result delivery.
+- Cross-repository behavioral fixtures and the five-scenario vertical slice.
 
-| Capability | Workflow | Domain |
-| --- | --- | --- |
-| `demo.verify`, `software.verify` | `capability_execution_job` (`prepare→execute→verify→finalize`) | software-engineering |
-| `data.quality_check` | `data_quality_job` (`ingest→profile→check→publish`) | data quality |
-| `system.diagnose` | `system_diagnostic_job` (`collect→inspect→classify→report`) | system diagnostics |
+The synchronous `execute_in_process` bridge has useful history/correlation but
+does not establish queued, independently launched restart-safe execution.
+Rules read retry.attempt/retry.budget while Tactus emits different semantic facts;
+missing values must not silently become an exhausted 0/0 budget. ABORT-on-SUCCESS
+cannot be wired to domain retirement. Python/Rust validation parity needs review.
 
-The second and third workflows are deliberate evidence that the generic core,
-contracts and bridge are domain-independent (`examples/data-quality-demo/`,
-`examples/system-diagnostic-demo/`, and both legs of
-`scripts/e2e_rust_dagster.sh`).
-
-## State ownership
-
-| Concern | Owner | Where |
-| --- | --- | --- |
-| Typed contracts, decisions, capability metadata, intents | Rust core | `crates/core` |
-| Policy, capability validation, approval requirement | Rust policy | `crates/policy` |
-| Abstract ports | Rust ports | `crates/ports` |
-| Transport/adapter to the execution backend | Rust bridge | `crates/bridge` |
-| Run state, step state, retries, re-execution, run persistence, event history | Dagster | `python/ictus_dagster` |
-| Domain semantics (domain work items, promotion, domain state) | domain adapter — **not present** | — |
-
-The core owns **no** workflow state. Rust never implements retries, queues,
-scheduling, step sequencing or crash recovery.
-
-## Contract versions
-
-All externally serialized payloads are `schema_version = 1`:
-
-| Contract | Schema | Rust type |
-| --- | --- | --- |
-| StateSnapshot | `contracts/state-snapshot.schema.json` | `ictus_core::StateSnapshot` |
-| ExecutionObservation | `contracts/observation.schema.json` | `ictus_core::ExecutionObservation` |
-| DecisionProposal | `contracts/proposal.schema.json` | `ictus_core::DecisionProposal` |
-| PolicyDecision | `contracts/policy-decision.schema.json` | `ictus_core::PolicyDecision` |
-| ExecutionIntent | `contracts/execution-intent.schema.json` | `ictus_core::ExecutionIntent` |
-| ExecutionResult | `contracts/execution-result.schema.json` | `ictus_core::ExecutionResult` |
-
-## Boundary and responsibilities
-
-- **Transport:** versioned JSON over stdin/stdout (see [`DECISIONS.md`](DECISIONS.md) DEC-001).
-- **Rust owns:** typed decisions, policy, capability validation, approval
-  requirements, execution-intent generation, deterministic decision providers.
-- **Dagster owns:** durable execution, step state, retries, re-execution,
-  dependencies, run persistence, execution event history, observability.
-- **Rust must never:** become a workflow engine, scheduler, retry engine, queue
-  or durable-state machine.
-- **Dagster must never:** decide retry-vs-decompose-vs-escalate, authorize
-  capabilities, require approvals or own domain state transitions. It reports
-  facts only.
-
-## Deliberately absent (by design)
-
-- No domain-system, agent-harness, specialized-model, LLM, Kubernetes, Dagster+ or enterprise concepts.
-- No domain-specific failure taxonomy in the core (adapters map onto the
-  generic observation categories).
-- No decomposition decision (introduced only after simpler decisions are proven).
-- No runtime integration with a domain adapter — that is M4+ and requires governance.
-
-## Known technical debt / open items
-
-- **Capability registry** is in-memory / file-based (a built-in demo set or
-  `--capabilities <file>`), not a service.
-- **Process supervision** for long-running capabilities is not implemented; the
-  demo capabilities are synchronous and fast.
-- **Timeouts** are represented by a `timeout_class` string only; no timeout
-  enforcement in the demo backend yet.
-- **Evidence store** is a file-backed JSONL adapter (`crates/adapters`); it is
-  not yet wired into the CLI/bridge by default.
-- **Approvals** are file-backed (`JsonFileApprovalProvider`) or `--approve`;
-  there is no interactive/live approval service.
-- The **Rust↔Dagster E2E test** and full pytest suite take ~1 minute (Dagster
-  process startup per run).
-- `policy-decision.schema.json` `allOf` guard is validated only where a schema
-  validator is used (Python tests); Rust enforces the same rule in
-  `PolicyDecision::validate`.
-- No mutation testing / property-based testing yet (see `scripts/mutants.sh`).
-
-## Next steps
-
-1. **M4 — active (design-only).** Fleet Work Order `FLEET-V3-WO-193` produces the
-   draft ADR, the external-integration twelve-question checklist and the adapter
-   interface in the **Fleet** repository. Nothing in this repository changes.
-2. **M5 — gated.** Verification shadow mode may not start until the M4 ADR is
-   **accepted** by the operator and sign-off is given.
-3. Contracts are guarded by property tests (`crates/core/tests/properties.rs`),
-   coverage thresholds and mutation testing; no domain-adapter runtime code
-   exists in this repository.
+See [reconciliation](architecture/BASELINE_V1_RECONCILIATION.md) for evidence and
+[Issues](https://github.com/Walsamer/ictus/issues) for implementation intent.
+No current Fleet runtime migration is authorized merely by these status entries.

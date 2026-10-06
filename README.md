@@ -30,7 +30,7 @@ The responsibility split is deliberate and load-bearing:
 
 ```text
 Ictus   = decisions + policy + capability validation
-Dagster = durable execution
+Dagster = durable execution (including execution-level retry)
 ```
 
 ## Why this project exists
@@ -81,7 +81,7 @@ database or configuration is required to build, test or run Ictus.
 | Domain semantics (domain objects, domain state transitions) | the domain adapter |
 
 **Rust must never** become a workflow engine, scheduler, retry engine, queue or
-durable-state machine. **Dagster must never** decide retry-vs-decompose-vs-escalate,
+durable-state machine. **Dagster must never** decide semantic retry-vs-decompose-vs-escalate,
 authorize capabilities, require approvals, or own domain state transitions — it
 reports facts.
 
@@ -163,22 +163,19 @@ changing the domain contracts. Rationale: [`docs/DECISIONS.md`](docs/DECISIONS.m
 echo '<ExecutionIntent JSON>' | uv run --frozen python -m ictus_dagster.bridge
 ```
 
-## Status
+## Architecture Baseline v1 and status
 
-Early (v0.1.0). The generic foundation is implemented:
+Read [Ictus scope](docs/architecture/BASELINE_V1.md) and the
+[implementation reconciliation](docs/architecture/BASELINE_V1_RECONCILIATION.md).
+The generic foundation and three example domains are implemented. Persistent
+Dagster demos exist; the complete Tactus context/authorization contract and a
+queued, restart-safe execution bridge remain work.
 
-- typed, versioned contracts and a deterministic policy core (M2)
-- a generic Dagster durable-execution backend with retry/re-execution (M1)
-- a versioned Rust ↔ Dagster bridge (M3)
-- **three** domain workflows through the same core: a software-engineering
-  capability workflow, a data-quality workflow and a system-diagnostics
-  workflow (evidence that the core is domain-independent)
-- enforced coverage thresholds: Python ≥ 99%, Rust ≥ 95% of lines
-
-Domain-adapter runtime integration is deliberately **not** started. See
-[`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) for what exists,
-state ownership and open items, and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
-planned path.
+The shared plan is [GitHub Issues](https://github.com/Walsamer/ictus/issues), grouped
+by the [M0–M5 roadmap](docs/ROADMAP.md). Humans and Fleet use the same intent:
+Issue → human branch OR derived WorkOrder + branch → PR → review → main.
+Only explicit fleet:ready issues may be ingested after the documented intake gates.
+Old session-plan M-numbers are historical, not current milestone completion.
 
 ## License
 
