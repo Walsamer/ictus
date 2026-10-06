@@ -23,7 +23,7 @@ Rules:
 1. **No workflow engine in Rust.** Rust must never own durable run/step state,
    execution retry loops, re-execution, queues, scheduling, step sequencing or crash recovery.
 2. **No policy decisions hidden in adapters.** The Dagster adapter reports
-   facts only. It must never decide retry-vs-decompose-vs-escalate, authorize a
+   facts only. It must never decide semantic retry-vs-decompose-vs-escalate, authorize a
    capability, require an approval, or change domain state.
 3. **Decision providers never execute.** A proposal is untrusted until it
    passes validation; only a validated `ExecutionIntent` may reach the backend.

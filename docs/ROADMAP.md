@@ -1,22 +1,38 @@
-# Shared GitHub roadmap — Architecture Baseline v1
+# Ictus roadmap — Architecture Baseline v1
 
-[GitHub Issues](https://github.com/Walsamer/ictus/issues) are canonical shared
-implementation intent. This document is navigation, not a second backlog.
+The [shared roadmap](https://github.com/Walsamer/tactus/blob/main/docs/ROADMAP.md)
+links all M0–M5 objectives. GitHub Issues are shared intent; this table is a
+2026-10-06 navigation snapshot. Native GitHub dependencies match the issue bodies.
 
-| Milestone | Outcome |
-|---|---|
-| M0 — Architecture Convergence | Review the paired baseline and reconcile current Fleet intake. |
-| M1 — Control / Decision Boundary | Typed contexts/decisions, facts, durable admission and domain application. |
-| M2 — Minimal Vertical Slice | Five-scenario Issue → local execution → verified domain outcome proof. |
-| M3 — Runtime + Development Workflow | Real agent, Stax publication, safe decomposition. |
-| M4 — Fleet Migration | Shadow, bounded authority transfer and rollback. |
-| M5 — Production Hardening | Operational recovery, run families, security and server portability. |
+M0 baseline adoption is complete through [PR #1](https://github.com/Walsamer/ictus/pull/1).
+M0 intake enablement is tracked in [Tactus #20](https://github.com/Walsamer/tactus/issues/20).
 
-Older M-numbers/session plans are historical. Existing Tactus issues are updated
-or explicitly superseded; Ictus receives a linked backlog. Dependencies are full
-Issue URLs in each issue body. Only an explicit fleet:ready label permits intake
-after source-revision and current Fleet project/configuration gates are satisfied.
-Initial automation queue is empty pending those gates and baseline review.
+## M1 — Control / Decision Boundary
 
-Use the issue template and preserve the chain:
-Architecture → Issue → human branch OR Fleet WorkOrder + branch → PR → review → main.
+| Issue | Title | Priority | Fleet status | Implementation dependencies |
+|---|---|---|---|---|
+| [ictus#2](https://github.com/Walsamer/ictus/issues/2) | Version initial/recovery context and validated decision contracts for Tactus | p0 | fleet:blocked | None |
+| [ictus#3](https://github.com/Walsamer/ictus/issues/3) | Validate capability and approval grants before emitting executable intents | p0 | fleet:blocked | [ictus#2](https://github.com/Walsamer/ictus/issues/2) |
+| [ictus#4](https://github.com/Walsamer/ictus/issues/4) | Select compatible backend and model routes from observed facts | p0 | fleet:blocked | [ictus#2](https://github.com/Walsamer/ictus/issues/2), [ictus#3](https://github.com/Walsamer/ictus/issues/3), [tactus#5](https://github.com/Walsamer/tactus/issues/5) |
+| [ictus#5](https://github.com/Walsamer/ictus/issues/5) | Produce bounded semantic RecoveryDecisions from normalized observations | p0 | fleet:blocked | [ictus#2](https://github.com/Walsamer/ictus/issues/2), [ictus#3](https://github.com/Walsamer/ictus/issues/3), [ictus#4](https://github.com/Walsamer/ictus/issues/4) |
+
+## M2 — Minimal Vertical Slice
+
+| Issue | Title | Priority | Fleet status | Implementation dependencies |
+|---|---|---|---|---|
+| [ictus#6](https://github.com/Walsamer/ictus/issues/6) | Add durable Dagster submission, receipt reconciliation and result delivery | p0 | fleet:blocked | [ictus#2](https://github.com/Walsamer/ictus/issues/2), [ictus#3](https://github.com/Walsamer/ictus/issues/3) |
+
+## Later cross-system milestones
+
+M3 runtime/Stax/decomposition lives in Tactus #22/#23/#10. M4 authority transfer is
+Tactus #24. M5 hardening is Tactus #25. These objectives may yield separately
+scoped PRs in either repository; do not create duplicate roadmap issues for the
+same objective. All six milestone names are available in both repositories.
+
+## Initial Fleet intake
+
+No fleet:ready issues yet. The current Fleet adapter's label, project mapping and
+source-revision gates must be corrected in Tactus #20 before enablement. Once that
+rollout is verified, Ictus #2 is the first proposed Ictus intake item; it can run
+alongside Tactus #3. Humans may take dependency-satisfied issues by explicit
+assignment. Preserve Issue revision/provenance in every derived WorkOrder.
