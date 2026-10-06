@@ -1,3 +1,6 @@
+> Historical decision log. [Architecture Baseline v1](architecture/BASELINE_V1.md)
+> supersedes conflicting architecture/session assumptions; wire changes still need versioning.
+
 # Decisions
 
 Durable, cross-cutting decisions made while implementing M0–M3. These are the

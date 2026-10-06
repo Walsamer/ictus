@@ -8,7 +8,7 @@ boundaries, not features.
 
 ```text
 Ictus   = decisions + policy + capability validation
-Dagster = durable execution
+Dagster = durable execution and execution-level retry
 ```
 
 - **`ictus-core`** — typed, versioned contracts. No I/O, no domain, no provider,
@@ -21,7 +21,7 @@ Dagster = durable execution
 Rules:
 
 1. **No workflow engine in Rust.** Rust must never own durable run/step state,
-   retries, re-execution, queues, scheduling, step sequencing or crash recovery.
+   execution retry loops, re-execution, queues, scheduling, step sequencing or crash recovery.
 2. **No policy decisions hidden in adapters.** The Dagster adapter reports
    facts only. It must never decide retry-vs-decompose-vs-escalate, authorize a
    capability, require an approval, or change domain state.
@@ -116,3 +116,10 @@ uv sync --frozen
 
 By contributing, you agree that your contributions are licensed under the
 [Apache License 2.0](LICENSE).
+
+## Shared implementation intent
+
+Follow [Architecture Baseline v1](docs/architecture/BASELINE_V1.md). Use the
+[issue template](.github/ISSUE_TEMPLATE/implementation.md), then a human branch
+or Issue-derived Fleet WorkOrder, then PR → review → main. Semantic recovery
+policy belongs in Ictus; the domain owns its durable effects.
