@@ -1,9 +1,9 @@
 # Ictus within Architecture Baseline v1
 
-Normative Ictus scope, 2026-10-06. The [system baseline](https://github.com/Walsamer/tactus/blob/architecture/baseline-v1/docs/architecture/SYSTEM_ARCHITECTURE.md)
-and [ownership table](https://github.com/Walsamer/tactus/blob/architecture/baseline-v1/docs/architecture/OWNERSHIP_BOUNDARIES.md) are maintained in Tactus.
-These branch links make the paired baseline reviewable before merge; move links
-to accepted main as part of adoption. Do not maintain another system ownership table.
+Normative Ictus scope, 2026-10-06. The [system baseline](https://github.com/Walsamer/tactus/blob/main/docs/architecture/SYSTEM_ARCHITECTURE.md)
+and [ownership table](https://github.com/Walsamer/tactus/blob/main/docs/architecture/OWNERSHIP_BOUNDARIES.md) are maintained in Tactus.
+Both baseline PRs were merged by the operator on 2026-10-06. Links target the
+accepted main specification. Do not maintain another system ownership table.
 
 ## Keep the generic core
 
@@ -26,7 +26,7 @@ Use the generic vocabulary already present on the reviewed integration candidate
 REEXECUTE, ROUTE, DECOMPOSE, ESCALATE, ABORT, EXECUTE_CAPABILITY. Preserve deliberate
 RETRY v1 compatibility. RecoveryDecision describes a validated semantic result,
 not a new domain-specific core state machine. A proposal alone is not authority.
-The [contract specification](https://github.com/Walsamer/tactus/blob/architecture/baseline-v1/docs/architecture/CROSS_SYSTEM_CONTRACTS.md) requires subject,
+The [contract specification](https://github.com/Walsamer/tactus/blob/main/docs/architecture/CROSS_SYSTEM_CONTRACTS.md) requires subject,
 snapshot/revision, policy/capability verdict, approvals and effect binding.
 
 Ictus produces approval requirements; the domain records/resolves grants and

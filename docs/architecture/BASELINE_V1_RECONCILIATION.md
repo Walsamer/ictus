@@ -20,9 +20,20 @@ schemas, examples, CI, README, status, architecture and migration/session plans.
 | Status says property/mutation tests absent despite existing gates | REMOVE stale claim | Documentation normalization | IMPLEMENTATION_STATUS, scripts/, CI | Low. |
 | Domain WorkOrders treated as next-step roadmap | SUPERSEDE | Issue-derived execution units with provenance | README, contribution/status/migration docs | Medium: duplicate implementation effort. |
 
-See the [system reconciliation](https://github.com/Walsamer/tactus/blob/architecture/baseline-v1/docs/architecture/BASELINE_V1_RECONCILIATION.md)
+See the [system reconciliation](https://github.com/Walsamer/tactus/blob/main/docs/architecture/BASELINE_V1_RECONCILIATION.md)
 for Tactus issues #1–12, PRs #13–18, local/GitHub tree comparison and audit
 06/07/08 findings. No runtime code is removed or changed by this architecture PR.
 The new Ictus backlog covers contracts, compatibility/routing, capability/approval
 validation, semantic recovery and the durable execution bridge. Implementation
 can reuse the integration candidate but must not treat it as merged authority.
+
+## Linked implementation objectives
+
+- [#2 context/envelope contracts](https://github.com/Walsamer/ictus/issues/2): vocabulary candidate, profile mismatch, binding and schema conformance.
+- [#3 capability/approval validation](https://github.com/Walsamer/ictus/issues/3): real bounded grants and trusted validated output.
+- [#4 compatibility/route policy](https://github.com/Walsamer/ictus/issues/4): authoritative selection moved from Tactus #6.
+- [#5 semantic recovery](https://github.com/Walsamer/ictus/issues/5): replacement for superseded Tactus #9; success/budget semantics.
+- [#6 durable Dagster bridge](https://github.com/Walsamer/ictus/issues/6): submission/reconciliation, result mapping and execution-only retries.
+
+Baseline PR #1 is merged at `b55a0adeda2b9c7df58045908367964d213c9838`.
+The remaining changes on the backlog branch are documentation references and status.
