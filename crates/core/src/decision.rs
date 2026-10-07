@@ -115,7 +115,7 @@ impl RouteConstraints {
             && self.required_runtime.is_none()
     }
 
-    fn validate(&self) -> Result<(), ContractError> {
+    pub fn validate(&self) -> Result<(), ContractError> {
         for (field, value) in [
             ("route.exclude_backend", &self.exclude_backend),
             ("route.preferred_backend", &self.preferred_backend),

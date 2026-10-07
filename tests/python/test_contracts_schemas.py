@@ -22,6 +22,11 @@ SCHEMA_EXAMPLE_PAIRS = [
     ("policy-decision.schema.json", "policy-decision.allow.json"),
     ("execution-intent.schema.json", "execution-intent.demo-verify.json"),
     ("execution-result.schema.json", "execution-result.demo-verify.json"),
+    ("decision-context.schema.json", "decision-context.initial.json"),
+    ("decision-context.schema.json", "decision-context.recovery.json"),
+    ("decision-envelope.schema.json", "decision-envelope.executable.json"),
+    ("decision-envelope.schema.json", "decision-envelope.denied.json"),
+    ("decision-envelope.schema.json", "decision-envelope.pending.json"),
 ]
 
 # Only the DecisionProposal contract was bumped (v2, generic semantic
@@ -137,3 +142,125 @@ def test_unknown_observation_category_is_rejected() -> None:
     payload["category"] = "NOT_A_REAL_CATEGORY"
     with pytest.raises(ValidationError):
         _validator("observation.schema.json").validate(payload)
+
+
+# -- initial/recovery context ------------------------------------------------
+
+
+def _example(name: str) -> dict:
+    return json.loads((EXAMPLES_DIR / name).read_text())
+
+
+def test_initial_context_forbids_a_fabricated_observation() -> None:
+    payload = _example("decision-context.initial.json")
+    payload["snapshot"]["facts"].append(
+        {"key": "observation.category", "value": "WORKER_TIMEOUT"}
+    )
+    with pytest.raises(ValidationError):
+        _validator("decision-context.schema.json").validate(payload)
+
+
+def test_initial_context_forbids_a_recovery_binding() -> None:
+    payload = _example("decision-context.initial.json")
+    payload["recovery"] = _example("decision-context.recovery.json")["recovery"]
+    with pytest.raises(ValidationError):
+        _validator("decision-context.schema.json").validate(payload)
+
+
+def test_recovery_context_requires_a_binding() -> None:
+    payload = _example("decision-context.recovery.json")
+    del payload["recovery"]
+    with pytest.raises(ValidationError):
+        _validator("decision-context.schema.json").validate(payload)
+
+
+def test_attempt_counts_must_be_integers_not_booleans() -> None:
+    payload = _example("decision-context.initial.json")
+    payload["attempts"]["semantic_attempts"] = True
+    with pytest.raises(ValidationError):
+        _validator("decision-context.schema.json").validate(payload)
+
+
+def test_missing_attempt_fields_fail_closed() -> None:
+    payload = _example("decision-context.initial.json")
+    del payload["attempts"]["max_semantic_attempts"]
+    with pytest.raises(ValidationError):
+        _validator("decision-context.schema.json").validate(payload)
+
+
+def test_unknown_context_kind_is_rejected() -> None:
+    payload = _example("decision-context.initial.json")
+    payload["kind"] = "FRESH"
+    with pytest.raises(ValidationError):
+        _validator("decision-context.schema.json").validate(payload)
+
+
+def test_step_retries_are_separate_from_the_semantic_budget() -> None:
+    # The step-retry counter is independent: a high value is valid even when the
+    # semantic bound is already reached.
+    payload = _example("decision-context.recovery.json")
+    payload["attempts"] = {
+        "semantic_attempts": 1,
+        "max_semantic_attempts": 1,
+        "step_retries": 42,
+    }
+    _validator("decision-context.schema.json").validate(payload)
+
+
+# -- validated decision envelope ---------------------------------------------
+
+
+def test_non_executable_envelope_cannot_carry_an_intent() -> None:
+    intent = _example("decision-envelope.executable.json")["intent"]
+    for name in ("decision-envelope.denied.json", "decision-envelope.pending.json"):
+        payload = _example(name)
+        payload["intent"] = intent
+        with pytest.raises(ValidationError):
+            _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_executable_envelope_requires_an_intent() -> None:
+    payload = _example("decision-envelope.executable.json")
+    del payload["intent"]
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_executable_envelope_requires_a_permitted_capability() -> None:
+    payload = _example("decision-envelope.executable.json")
+    payload["capability_validation"]["permitted"] = False
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_unknown_envelope_outcome_is_rejected() -> None:
+    payload = _example("decision-envelope.denied.json")
+    payload["outcome"] = "MAYBE"
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_envelope_binds_policy_identity_and_version() -> None:
+    payload = _example("decision-envelope.executable.json")
+    del payload["policy"]["policy_version"]
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_envelope_binds_snapshot_digest_and_revision() -> None:
+    payload = _example("decision-envelope.executable.json")
+    del payload["snapshot"]["digest"]
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_no_route_envelope_uses_generic_route_constraints() -> None:
+    payload = _example("decision-envelope.executable.json")
+    del payload["intent"]
+    payload["outcome"] = "NO_ROUTE"
+    payload["route"] = {"exclude_backend": "backend.a"}
+    _validator("decision-envelope.schema.json").validate(payload)
+
+    payload["route"] = {"preferred_backend": ""}
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)

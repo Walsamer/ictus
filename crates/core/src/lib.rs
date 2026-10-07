@@ -15,7 +15,9 @@
 //!   `docs/CONTRACTS_AND_BOUNDARIES.md`.
 
 pub mod capability;
+pub mod context;
 pub mod decision;
+pub mod envelope;
 pub mod evidence;
 pub mod execution;
 pub mod observation;
@@ -24,8 +26,15 @@ pub mod snapshot;
 pub mod version;
 
 pub use capability::{Capability, RiskClass};
+pub use context::{
+    facts, AttemptBudget, ContextKind, DecisionContext, RecoveryBinding, SnapshotRef,
+};
 pub use decision::{
     DecisionKind, DecisionProposal, ProviderMetadata, ProviderType, RouteConstraints,
+};
+pub use envelope::{
+    ApprovalBinding, CapabilityValidation, DecisionEnvelope, EnvelopeOutcome, PolicyBinding,
+    ProposalBinding,
 };
 pub use evidence::EvidenceRef;
 pub use execution::{ExecutionIntent, ExecutionResult, ExecutionStatus, RequestedBy};
@@ -33,5 +42,6 @@ pub use observation::{ExecutionObservation, ObservationCategory};
 pub use policy::{PolicyDecision, PolicyDecisionKind};
 pub use snapshot::{Fact, StateSnapshot, Subject};
 pub use version::{
-    ContractError, DECISION_SCHEMA_VERSION, LEGACY_DECISION_SCHEMA_VERSION, SCHEMA_VERSION,
+    check_contract_version, ContractError, CONTEXT_SCHEMA_VERSION, DECISION_SCHEMA_VERSION,
+    ENVELOPE_SCHEMA_VERSION, LEGACY_DECISION_SCHEMA_VERSION, SCHEMA_VERSION,
 };

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "envelope_id": "env-0003",
+  "subject": { "type": "task", "id": "task-123" },
+  "snapshot": {
+    "snapshot_id": "snap-0002",
+    "revision": 2,
+    "digest": "076888ef4c18be7d2dd664fc6b0ceefc0561cc2b558076973b62a2a086751b5b"
+  },
+  "proposal": {
+    "proposal_id": "proposal-0004",
+    "schema_version": 2,
+    "decision": "EXECUTE_CAPABILITY"
+  },
+  "policy": {
+    "policy_decision_id": "policy:proposal-0004",
+    "policy_version": "0.1.0",
+    "verdict": "REQUIRE_APPROVAL"
+  },
+  "capability_validation": {
+    "capability": "software.promote",
+    "admitted": true,
+    "permitted": true,
+    "reason": "capability 'software.promote' requires approval 'human.promote'"
+  },
+  "approvals": [
+    { "name": "human.promote", "satisfied": false }
+  ],
+  "outcome": "PENDING",
+  "expiry": "2026-10-01T01:00:00Z"
+}

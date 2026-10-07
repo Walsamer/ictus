@@ -22,6 +22,30 @@ pub const DECISION_SCHEMA_VERSION: u32 = 2;
 /// (`RETRY` -> `REEXECUTE`) and may not use the v2-only `ROUTE` / `DECOMPOSE`.
 pub const LEGACY_DECISION_SCHEMA_VERSION: u32 = 1;
 
+/// The current schema version of the versioned initial/recovery
+/// `DecisionContext` contract.
+///
+/// `schema_version` is per-contract: this new wire contract starts at `1` and
+/// is versioned independently of [`SCHEMA_VERSION`] and
+/// [`DECISION_SCHEMA_VERSION`].
+pub const CONTEXT_SCHEMA_VERSION: u32 = 1;
+
+/// The current schema version of the versioned validated
+/// `DecisionEnvelope` contract. Per-contract, independently versioned.
+pub const ENVELOPE_SCHEMA_VERSION: u32 = 1;
+
+/// Reject any version other than the supported one for a specific contract.
+///
+/// `schema_version` is per-contract, so a version that is valid for one
+/// contract may be unknown for another. Unknown versions fail closed.
+pub fn check_contract_version(found: u32, supported: u32) -> Result<(), ContractError> {
+    if found == supported {
+        Ok(())
+    } else {
+        Err(ContractError::UnsupportedSchemaVersion { found, supported })
+    }
+}
+
 /// Errors produced while validating a contract.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ContractError {
@@ -38,14 +62,7 @@ impl ContractError {
     /// own multi-version handling on top of this, but the generic core fails
     /// closed on unknown versions.
     pub fn check_version(found: u32) -> Result<(), ContractError> {
-        if found == SCHEMA_VERSION {
-            Ok(())
-        } else {
-            Err(ContractError::UnsupportedSchemaVersion {
-                found,
-                supported: SCHEMA_VERSION,
-            })
-        }
+        check_contract_version(found, SCHEMA_VERSION)
     }
 
     /// Validate that a required string field is non-empty and trimmed.
@@ -75,6 +92,18 @@ mod tests {
             ContractError::UnsupportedSchemaVersion {
                 found: SCHEMA_VERSION + 1,
                 supported: SCHEMA_VERSION,
+            }
+        );
+    }
+
+    #[test]
+    fn per_contract_version_check_fails_closed() {
+        assert!(check_contract_version(1, 1).is_ok());
+        assert_eq!(
+            check_contract_version(2, 1).unwrap_err(),
+            ContractError::UnsupportedSchemaVersion {
+                found: 2,
+                supported: 1,
             }
         );
     }

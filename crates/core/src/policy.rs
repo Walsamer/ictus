@@ -84,4 +84,26 @@ impl PolicyDecision {
         }
         Ok(())
     }
+
+    /// Revalidate a `MODIFY` outcome before it may execute.
+    ///
+    /// A modified proposal is never trusted: its rewritten intent must pass its
+    /// own contract validation (and would be re-checked against the capability
+    /// registry by the caller) before it may become executable. A `MODIFY` with
+    /// no revalidated intent fails closed.
+    pub fn revalidate_modified(&self) -> Result<(), ContractError> {
+        self.validate()?;
+        if matches!(self.decision, PolicyDecisionKind::Modify) {
+            match &self.modified_intent {
+                Some(intent) => intent.validate()?,
+                None => {
+                    return Err(ContractError::InvalidValue {
+                        field: "modified_intent",
+                        reason: "a MODIFY decision must carry a revalidated intent".to_string(),
+                    })
+                }
+            }
+        }
+        Ok(())
+    }
 }

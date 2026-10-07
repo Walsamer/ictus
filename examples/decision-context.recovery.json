@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "context_id": "ctx-recovery-0002",
+  "kind": "RECOVERY",
+  "profile": "tactus.generic.v1",
+  "snapshot": {
+    "schema_version": 1,
+    "snapshot_id": "snap-0002",
+    "timestamp": "2026-10-01T00:05:00Z",
+    "domain": "software",
+    "subject": { "type": "task", "id": "task-123" },
+    "facts": [
+      { "key": "subject.revision", "value": 2 },
+      { "key": "attempts.semantic", "value": 1 },
+      { "key": "attempts.max_semantic", "value": 2 },
+      { "key": "attempts.step_retries", "value": 3 },
+      { "key": "observation.category", "value": "WORKER_TIMEOUT" },
+      { "key": "capability.id", "value": "demo.verify" }
+    ],
+    "capabilities": ["demo.verify"],
+    "constraints": []
+  },
+  "revision": 2,
+  "attempts": {
+    "semantic_attempts": 1,
+    "max_semantic_attempts": 2,
+    "step_retries": 3
+  },
+  "grants": ["demo.verify"],
+  "recovery": {
+    "failed_attempt_id": "attempt-0001",
+    "failed_intent_id": "intent:proposal-0001",
+    "failed_snapshot": {
+      "snapshot_id": "snap-0001",
+      "revision": 1,
+      "digest": "46c1fba8949bae65f883342afcdc52d9df3ef28b48938b4129b097a44dff0dfb"
+    },
+    "observation": {
+      "schema_version": 1,
+      "observation_id": "obs-0001",
+      "execution_id": "exec-0001",
+      "intent_id": "intent:proposal-0001",
+      "category": "WORKER_TIMEOUT",
+      "message": "worker exceeded its timeout class",
+      "evidence": [
+        { "kind": "dagster_run", "uri": "dagster://runs/00000000-0000-4000-8000-000000000001" }
+      ],
+      "observed_at": "2026-10-01T00:00:00Z",
+      "retryable": true
+    }
+  }
+}
