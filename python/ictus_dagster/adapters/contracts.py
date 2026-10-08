@@ -59,6 +59,21 @@ def validate_intent(payload: dict[str, Any]) -> dict[str, Any]:
     requested_by = _require(payload, "requested_by", dict)
     _require(requested_by, "provider", str)
     _require(requested_by, "decision_id", str)
+    selected_route = payload.get("selected_route")
+    if selected_route is not None:
+        if not isinstance(selected_route, dict):
+            raise ContractError("selected_route must be a JSON object")
+        route = _require(selected_route, "route", dict)
+        for field in ("backend", "provider", "runtime", "model"):
+            value = _require(route, field, str)
+            if not value.strip():
+                raise ContractError(f"selected_route.route.{field} must be non-empty")
+        for name in ("descriptor", "health", "quota", "disablement"):
+            fact = _require(selected_route, name, dict)
+            fact_id = _require(fact, "fact_id", str)
+            revision = _require(fact, "revision", int)
+            if not fact_id.strip() or revision < 0:
+                raise ContractError(f"selected_route.{name} must bind a non-empty fact_id and non-negative revision")
     return payload
 
 

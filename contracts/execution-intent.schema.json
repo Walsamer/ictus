@@ -12,6 +12,10 @@
     "target": { "$ref": "#/$defs/subject" },
     "arguments": { "type": "object" },
     "policy_context": { "type": "object" },
+    "selected_route": {
+      "$ref": "#/$defs/selected_route",
+      "description": "The only backend/provider/runtime/model route authorized by Ictus. Runtime adapters must reject stale fact revisions and must not substitute another route."
+    },
     "requested_by": { "$ref": "#/$defs/requested_by" }
   },
   "$defs": {
@@ -30,6 +34,38 @@
         "provider": { "type": "string", "minLength": 1 },
         "decision_id": { "type": "string", "minLength": 1 }
       }
+    },
+    "route_identity": {
+      "type": "object",
+      "required": ["backend", "provider", "runtime", "model"],
+      "properties": {
+        "backend": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "runtime": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "route_fact_ref": {
+      "type": "object",
+      "required": ["fact_id", "revision"],
+      "properties": {
+        "fact_id": { "type": "string", "minLength": 1 },
+        "revision": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "selected_route": {
+      "type": "object",
+      "required": ["route", "descriptor", "health", "quota", "disablement"],
+      "properties": {
+        "route": { "$ref": "#/$defs/route_identity" },
+        "descriptor": { "$ref": "#/$defs/route_fact_ref" },
+        "health": { "$ref": "#/$defs/route_fact_ref" },
+        "quota": { "$ref": "#/$defs/route_fact_ref" },
+        "disablement": { "$ref": "#/$defs/route_fact_ref" }
+      },
+      "additionalProperties": false
     }
   }
 }

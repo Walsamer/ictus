@@ -23,6 +23,7 @@ pub mod execution;
 pub mod grant;
 pub mod observation;
 pub mod policy;
+pub mod routing;
 pub mod snapshot;
 pub mod version;
 
@@ -42,6 +43,10 @@ pub use execution::{ExecutionIntent, ExecutionResult, ExecutionStatus, Requested
 pub use grant::ApprovalGrant;
 pub use observation::{ExecutionObservation, ObservationCategory};
 pub use policy::{PolicyDecision, PolicyDecisionKind};
+pub use routing::{
+    ObservationState, RouteCandidate, RouteDescriptor, RouteExclusion, RouteFactRef, RouteFacts,
+    RouteIdentity, RouteObservation, RouteRequirements, SelectedRoute,
+};
 pub use snapshot::{Fact, StateSnapshot, Subject};
 pub use version::{
     check_contract_version, ContractError, CONTEXT_SCHEMA_VERSION, DECISION_SCHEMA_VERSION,

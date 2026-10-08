@@ -4,7 +4,9 @@
 //! this. The intent is the sole object allowed to cross into the execution
 //! backend.
 
-use ictus_core::{DecisionProposal, ExecutionIntent, RequestedBy, StateSnapshot};
+use ictus_core::{
+    DecisionKind, DecisionProposal, ExecutionIntent, RequestedBy, SelectedRoute, StateSnapshot,
+};
 use ictus_ports::PortError;
 
 use crate::validation::validate_proposal;
@@ -18,6 +20,37 @@ pub fn build_execution_intent(
     proposal: &DecisionProposal,
 ) -> Result<ExecutionIntent, PortError> {
     validate_proposal(proposal)?;
+    if proposal.decision == DecisionKind::Route {
+        return Err(PortError::PolicyFailed(
+            "ROUTE requires an Ictus-selected route; route constraints alone cannot produce an execution intent".to_string(),
+        ));
+    }
+    build_execution_intent_unrouted(snapshot, proposal)
+}
+
+/// Build the only executable form of a `ROUTE` proposal. The route is selected
+/// by the policy selector and is attached as typed, revision-bound data rather
+/// than a hint which a runtime can replace.
+pub fn build_routed_execution_intent(
+    snapshot: &StateSnapshot,
+    proposal: &DecisionProposal,
+    selected_route: SelectedRoute,
+) -> Result<ExecutionIntent, PortError> {
+    validate_proposal(proposal)?;
+    if proposal.decision != DecisionKind::Route {
+        return Err(PortError::PolicyFailed(
+            "a selected route is valid only for a ROUTE decision".to_string(),
+        ));
+    }
+    let mut intent = build_execution_intent_unrouted(snapshot, proposal)?;
+    intent.selected_route = Some(selected_route);
+    Ok(intent)
+}
+
+fn build_execution_intent_unrouted(
+    snapshot: &StateSnapshot,
+    proposal: &DecisionProposal,
+) -> Result<ExecutionIntent, PortError> {
     let capability = proposal.capability.clone().ok_or_else(|| {
         PortError::PolicyFailed(format!(
             "decision {:?} cannot produce an execution intent without a capability",
@@ -47,8 +80,8 @@ pub fn build_execution_intent(
         "schema_version".to_string(),
         serde_json::json!(snapshot.schema_version),
     );
-    // A `ROUTE` decision carries its generic constraints to the execution
-    // backend as policy context; the core itself performs no routing.
+    // Route requirements remain audit context. A `ROUTE` additionally needs a
+    // typed selected_route, added only by `build_routed_execution_intent`.
     if let Some(route) = &proposal.route {
         intent.policy_context.insert(
             "route".to_string(),
