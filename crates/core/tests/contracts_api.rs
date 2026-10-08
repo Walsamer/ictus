@@ -630,6 +630,12 @@ fn make_intent() -> ExecutionIntent {
     )
 }
 
+fn make_non_executable_envelope() -> DecisionEnvelope {
+    let mut envelope = make_envelope();
+    envelope.outcome = EnvelopeOutcome::Denied;
+    envelope
+}
+
 fn make_envelope() -> DecisionEnvelope {
     DecisionEnvelope {
         schema_version: 1,
@@ -893,6 +899,98 @@ fn envelope_validation_rejects_blank_bindings() {
     let mut envelope = make_envelope().with_intent(make_intent());
     envelope.schema_version = 2;
     assert!(envelope.validate().is_err());
+}
+
+#[test]
+fn envelope_validation_rejects_invalid_validation_binding() {
+    // A non-executable, intent-free envelope isolates the validation binding:
+    // any error comes from `ValidationBinding::validate` alone, so weakening a
+    // boolean operator there cannot be masked by another check.
+    make_non_executable_envelope().validate().unwrap();
+
+    let mutators: [fn(&mut DecisionEnvelope); 6] = [
+        |envelope| envelope.validation.context_id = String::new(),
+        |envelope| envelope.validation.proposal_digest = String::new(),
+        |envelope| envelope.validation.capability_version = String::new(),
+        |envelope| envelope.validation.validated_at = String::new(),
+        // All-hex but the wrong length.
+        |envelope| envelope.validation.proposal_digest = "abcd".to_string(),
+        // The right length but not hexadecimal.
+        |envelope| envelope.validation.proposal_digest = "z".repeat(64),
+    ];
+    for mutate in mutators {
+        let mut envelope = make_non_executable_envelope();
+        mutate(&mut envelope);
+        assert!(envelope.validate().is_err());
+    }
+}
+
+fn bound_grant() -> ApprovalGrant {
+    ApprovalGrant::new(
+        "grant-1",
+        "human.promote",
+        subject(),
+        2,
+        "demo.verify",
+        "0.1.0",
+        "2026-09-30T00:00:00Z",
+        "2026-10-02T00:00:00Z",
+    )
+    .with_evidence(EvidenceRef::new("approval_record", "domain://grant-1"))
+}
+
+#[test]
+fn approval_grant_validation_fails_closed() {
+    bound_grant().validate().unwrap();
+
+    let mut blank_id = bound_grant();
+    blank_id.grant_id = String::new();
+    assert!(blank_id.validate().is_err());
+
+    let mut wildcard = bound_grant();
+    wildcard.approval = "*".to_string();
+    assert!(wildcard.validate().is_err());
+
+    let mut no_evidence = bound_grant();
+    no_evidence.evidence.clear();
+    assert!(no_evidence.validate().is_err());
+
+    let mut blank_subject = bound_grant();
+    blank_subject.subject = Subject::new("", "t1");
+    assert!(blank_subject.validate().is_err());
+}
+
+#[test]
+fn a_satisfied_approval_requires_a_grant_bound_on_every_field() {
+    // Baseline: the grant binds the approval name, subject, revision, capability
+    // and policy version, so the envelope is valid.
+    make_envelope()
+        .with_approval(ApprovalBinding::new("human.promote", true))
+        .with_grant(bound_grant())
+        .with_intent(make_intent())
+        .validate()
+        .unwrap();
+
+    let mutators: [fn(&mut ApprovalGrant); 6] = [
+        |grant| grant.revoked = true,
+        |grant| grant.approval = "other".to_string(),
+        |grant| grant.subject = Subject::new("task", "other"),
+        |grant| grant.revision = 99,
+        |grant| grant.capability = "other.capability".to_string(),
+        |grant| grant.policy_version = "9.9.9".to_string(),
+    ];
+    for mutate in mutators {
+        let mut grant = bound_grant();
+        mutate(&mut grant);
+        let envelope = make_envelope()
+            .with_approval(ApprovalBinding::new("human.promote", true))
+            .with_grant(grant)
+            .with_intent(make_intent());
+        assert!(
+            envelope.validate().is_err(),
+            "a grant that fails one binding field must not satisfy the approval"
+        );
+    }
 }
 
 #[test]

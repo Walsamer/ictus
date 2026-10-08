@@ -5,8 +5,8 @@ on:
     branches: ["main"]
   pull_request:
 
-# One run per ref: a branch with an open PR is validated by the pull_request
-event only, and a rapid re-push cancels the superseded run.
+# One run per ref: a branch with an open PR is validated only by the
+# pull_request event, and a rapid re-push cancels the superseded run.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
