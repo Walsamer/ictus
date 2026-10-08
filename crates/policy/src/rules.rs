@@ -7,7 +7,9 @@
 //! It reads only domain-neutral facts from the snapshot:
 //!
 //! - `observation.category` (SCREAMING_SNAKE_CASE)
-//! - `retry.attempt`, `retry.budget` (integers)
+//! - `retry.attempt`, `retry.budget` (integers; the *semantic re-execution*
+//!   budget, enforced by policy and distinct from the execution backend's own
+//!   step retries)
 //! - `capability.id` (the capability to re-execute)
 //! - `observation.message` (optional)
 
@@ -32,8 +34,8 @@ fn parse_category(value: Option<&str>) -> ObservationCategory {
     }
 }
 
-/// A deterministic decision provider that maps an observation plus retry budget
-/// onto a bounded proposal.
+/// A deterministic decision provider that maps an observation plus re-execution
+/// budget onto a bounded proposal.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RuleDecisionProvider;
 
@@ -74,17 +76,17 @@ impl DecisionProvider for RuleDecisionProvider {
                 if capability.is_none() {
                     proposal.decision = DecisionKind::Escalate;
                     proposal.reason =
-                        Some("retryable failure but no capability id to re-execute".into());
+                        Some("re-executable failure but no capability id to re-execute".into());
                 } else if attempt < budget {
-                    proposal.decision = DecisionKind::Retry;
+                    proposal.decision = DecisionKind::Reexecute;
                     proposal.capability = capability;
                     proposal.reason = Some(format!(
-                        "retryable {category:?} within budget ({attempt}/{budget})"
+                        "re-executable {category:?} within re-execution budget ({attempt}/{budget})"
                     ));
                 } else {
                     proposal.decision = DecisionKind::Escalate;
                     proposal.reason = Some(format!(
-                        "{category:?} with exhausted retry budget ({attempt}/{budget})"
+                        "{category:?} with exhausted re-execution budget ({attempt}/{budget})"
                     ));
                 }
             }
@@ -131,11 +133,11 @@ mod tests {
     }
 
     #[test]
-    fn timeout_within_budget_retries() {
+    fn timeout_within_budget_reexecutes() {
         let proposal = RuleDecisionProvider::new()
             .propose(&snapshot("WORKER_TIMEOUT", 0, 2))
             .unwrap();
-        assert_eq!(proposal.decision, DecisionKind::Retry);
+        assert_eq!(proposal.decision, DecisionKind::Reexecute);
         assert_eq!(proposal.capability.as_deref(), Some("demo.verify"));
     }
 
@@ -175,11 +177,11 @@ mod tests {
     }
 
     #[test]
-    fn provider_unavailable_within_budget_retries() {
+    fn provider_unavailable_within_budget_reexecutes() {
         let proposal = RuleDecisionProvider::new()
             .propose(&snapshot("PROVIDER_UNAVAILABLE", 0, 2))
             .unwrap();
-        assert_eq!(proposal.decision, DecisionKind::Retry);
+        assert_eq!(proposal.decision, DecisionKind::Reexecute);
         assert_eq!(proposal.capability.as_deref(), Some("demo.verify"));
     }
 

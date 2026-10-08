@@ -65,16 +65,23 @@ Observations are facts, not decisions.
 
 Produced by any DecisionProvider.
 
-Examples:
+The frozen generic semantic vocabulary
+(`docs/adr/0001-generic-decision-vocabulary.md`) is:
 
 ```text
-Retry
-Abort
-Escalate
-ExecuteCapability
-Route
-Decompose
+REEXECUTE            # another semantic execution attempt; never a Dagster step retry
+ROUTE                # execute a capability with generic route constraints
+DECOMPOSE            # decompose the subject; Ictus creates no child work items
+ESCALATE
+ABORT
+EXECUTE_CAPABILITY
 ```
+
+A `ROUTE` may carry generic constraints (`exclude_backend`,
+`preferred_backend`, `required_provider`, `required_runtime`) that name roles,
+never vendors. The `DecisionProposal` contract is `schema_version: 2`; v1
+payloads (legacy `RETRY`) are accepted and normalized to `REEXECUTE`, and
+v2-only tokens are rejected under v1.
 
 A proposal is untrusted until validated.
 
@@ -143,6 +150,103 @@ Conceptual shape:
   "finished_at": "..."
 }
 ```
+
+---
+
+## DecisionContext
+
+Binds the situation a decision provider is asked about. It is either a fresh
+`INITIAL` context or a `RECOVERY` context that re-enters a failed attempt.
+
+Conceptual shape:
+
+```json
+{
+  "schema_version": 1,
+  "context_id": "uuid",
+  "kind": "INITIAL",
+  "profile": "tactus.generic.v1",
+  "snapshot": { "...": "a StateSnapshot" },
+  "revision": 3,
+  "attempts": {
+    "semantic_attempts": 0,
+    "max_semantic_attempts": 2,
+    "step_retries": 0
+  },
+  "grants": [],
+  "facts": []
+}
+```
+
+Rules:
+
+- An `INITIAL` context carries no fabrication: it must not bind a recovery and
+  must not contain an `observation.category` fact. A recovery situation is a
+  `RECOVERY` context.
+- A `RECOVERY` context must bind the failed attempt: `failed_attempt_id`,
+  `failed_intent_id`, the `failed_snapshot` (id + revision + digest) and the
+  `ExecutionObservation` produced by the failure.
+- `semantic_attempts` counts accepted semantic attempts **including** the failed
+  attempt; `max_semantic_attempts` is the total bound. `step_retries` is the
+  execution backend's own step-retry counter and is deliberately separate. It
+  is not a semantic attempt budget and never consumes one.
+- Missing or invalid values (blank ids, non-integer counts, `semantic_attempts`
+  greater than the bound) fail closed.
+
+The core stores generic `profile`/facts keyed with dotted names, e.g.
+`subject.revision` and `attempts.semantic`; it knows no domain entity. A domain
+adapter supplies the profile facts Tactus expects.
+
+---
+
+## DecisionEnvelope
+
+A validated, portable record of the decision. It is the object a consumer may
+act on; it binds every fact needed to reconstruct *why* an intent is
+legitimate.
+
+Conceptual shape:
+
+```json
+{
+  "schema_version": 1,
+  "envelope_id": "uuid",
+  "subject": { "type": "task", "id": "task-123" },
+  "snapshot": { "snapshot_id": "uuid", "revision": 3, "digest": "sha256" },
+  "proposal": { "proposal_id": "uuid", "schema_version": 2, "decision": "REEXECUTE" },
+  "policy": { "policy_decision_id": "uuid", "policy_version": "0.1.0", "verdict": "ALLOW" },
+  "capability_validation": { "capability": "demo.verify", "admitted": true, "permitted": true, "reason": "..." },
+  "route": null,
+  "approvals": [],
+  "outcome": "EXECUTABLE",
+  "expiry": "2026-10-01T19:00:00Z",
+  "intent": { "...": "an ExecutionIntent" }
+}
+```
+
+The `outcome` is the resolved gate: `EXECUTABLE`, `DENIED`, `PENDING`,
+`NO_ROUTE` or `INVALID`. It is derived from the policy verdict and route
+resolution, and is never inferred from the presence of an intent.
+
+Binding rules:
+
+- The envelope binds the subject, the snapshot digest/revision, the proposal
+  identity and version, the policy identity and version, the verdict, the
+  capability validation, the route, the approvals and an expiry.
+- Only `EXECUTABLE` may carry an `ExecutionIntent`. `DENIED`, `PENDING`,
+  `NO_ROUTE` and `INVALID` carry no intent, so a denial, a pending approval or a
+  missing route can never accidentally ship an executable command.
+- An `EXECUTABLE` intent must reference the same capability the envelope
+  validated and the same subject the snapshot was taken for; the intent is
+  revalidated when the envelope is validated.
+- A `MODIFY` proposal is revalidated (`PolicyDecision::revalidate_modified`)
+  before its modified intent is executed: the modified intent must itself pass
+  full validation.
+
+The vocabulary in the envelope stays generic. The decision kinds carried by
+`proposal.decision` are exactly the six frozen tokens (including `REEXECUTE`,
+`ROUTE`, `DECOMPOSE`, `ESCALATE`, `ABORT`, `EXECUTE_CAPABILITY`); a new wire
+version is introduced only when a token or shape genuinely changes.
 
 ---
 
@@ -327,9 +431,12 @@ Every externally serialized contract must include:
 schema_version
 ```
 
-Breaking changes require a new version.
-
-Adapters may support multiple versions during migration.
+`schema_version` is per-contract. The base contracts and the initial/recovery
+`DecisionContext` and validated `DecisionEnvelope` contracts are at `1`; the
+`DecisionProposal` contract is at `2`. Breaking changes require a new version;
+new wire versions change only when required. Adapters may support multiple
+versions during migration, and old inputs (e.g. legacy `RETRY` proposals) have
+explicit compatibility fixtures.
 
 ---
 

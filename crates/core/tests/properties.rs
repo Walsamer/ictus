@@ -5,10 +5,12 @@
 //! inputs, which a hand-written example can miss.
 
 use ictus_core::{
-    Capability, DecisionKind, DecisionProposal, EvidenceRef, ExecutionIntent, ExecutionObservation,
-    ExecutionResult, ExecutionStatus, Fact, ObservationCategory, PolicyDecision,
-    PolicyDecisionKind, ProviderMetadata, RequestedBy, RiskClass, StateSnapshot, Subject,
-    SCHEMA_VERSION,
+    AttemptBudget, Capability, CapabilityValidation, DecisionContext, DecisionEnvelope,
+    DecisionKind, DecisionProposal, EnvelopeOutcome, EvidenceRef, ExecutionIntent,
+    ExecutionObservation, ExecutionResult, ExecutionStatus, Fact, ObservationCategory,
+    PolicyBinding, PolicyDecision, PolicyDecisionKind, ProposalBinding, ProviderMetadata,
+    RecoveryBinding, RequestedBy, RiskClass, SnapshotRef, StateSnapshot, Subject,
+    DECISION_SCHEMA_VERSION, SCHEMA_VERSION,
 };
 use proptest::prelude::*;
 
@@ -110,10 +112,15 @@ proptest! {
             serde_json::to_value(&observation).unwrap(),
             serde_json::to_value(&intent).unwrap(),
             serde_json::to_value(&result).unwrap(),
-            serde_json::to_value(make_proposal(proposal)).unwrap(),
         ] {
             prop_assert_eq!(value["schema_version"].as_u64(), Some(SCHEMA_VERSION as u64));
         }
+        // The DecisionProposal contract is versioned independently and is at v2.
+        let proposal = serde_json::to_value(make_proposal(proposal)).unwrap();
+        prop_assert_eq!(
+            proposal["schema_version"].as_u64(),
+            Some(DECISION_SCHEMA_VERSION as u64)
+        );
     }
 }
 
@@ -190,8 +197,19 @@ proptest! {
             DecisionProposal::new("p", DecisionKind::ExecuteCapability, subject, provider, "t");
         prop_assert!(proposal.validate().is_err());
 
-        let retry = DecisionProposal::new("p", DecisionKind::Retry, proposal.subject.clone(), proposal.provider.clone(), "t");
+        let retry = DecisionProposal::new("p", DecisionKind::Reexecute, proposal.subject.clone(), proposal.provider.clone(), "t");
         prop_assert!(retry.validate().is_err());
+    }
+
+    #[test]
+    fn every_capability_requiring_decision_requires_a_capability(
+        subject in arb_subject(),
+        provider in arb_provider(),
+    ) {
+        for decision in [DecisionKind::Reexecute, DecisionKind::Route] {
+            let proposal = DecisionProposal::new("p", decision, subject.clone(), provider.clone(), "t");
+            prop_assert!(proposal.validate().is_err());
+        }
     }
 
     #[test]
@@ -240,4 +258,158 @@ fn make_proposal(as_abort: bool) -> DecisionProposal {
         ProviderMetadata::rules("rules"),
         "2026-10-01T00:00:00Z",
     )
+}
+
+// -- initial/recovery context and validated envelope ------------------------
+
+prop_compose! {
+    fn arb_context()(revision in 0u64..1000, max in 1u32..5, as_recovery in any::<bool>()) -> DecisionContext {
+        let snapshot = StateSnapshot::new(
+            "snap",
+            "2026-10-01T00:00:00Z",
+            "software",
+            Subject::new("task", "t1"),
+        );
+        if as_recovery {
+            let observation = ExecutionObservation::new(
+                "obs",
+                "exec",
+                "intent",
+                ObservationCategory::WorkerTimeout,
+                "2026-10-01T00:00:00Z",
+            );
+            let binding = RecoveryBinding::new(
+                "attempt-1",
+                "intent-1",
+                SnapshotRef::new("snap-0", revision, "digest-0"),
+                observation,
+            );
+            DecisionContext::recovery(
+                "ctx",
+                "tactus.generic.v1",
+                snapshot,
+                revision,
+                AttemptBudget::with_attempts(1, max, 0),
+                binding,
+            )
+        } else {
+            DecisionContext::initial(
+                "ctx",
+                "tactus.generic.v1",
+                snapshot,
+                revision,
+                AttemptBudget::new(max),
+            )
+        }
+    }
+}
+
+prop_compose! {
+    fn arb_envelope()(capability in "[a-z][a-z0-9_.]{0,10}") -> DecisionEnvelope {
+        let subject = Subject::new("task", "t1");
+        let intent = ExecutionIntent::new(
+            "i1",
+            capability.clone(),
+            subject.clone(),
+            RequestedBy::new("rules", "p1"),
+        );
+        DecisionEnvelope {
+            schema_version: 1,
+            envelope_id: "env-1".to_string(),
+            subject,
+            snapshot: SnapshotRef::new("snap-1", 1, "digest-1"),
+            proposal: ProposalBinding::new("p1", 2, DecisionKind::Reexecute),
+            policy: PolicyBinding::new("pd1", "0.1.0", PolicyDecisionKind::Allow),
+            capability_validation: CapabilityValidation::new(
+                capability,
+                true,
+                true,
+                "admitted",
+            ),
+            route: None,
+            approvals: Vec::new(),
+            outcome: EnvelopeOutcome::Executable,
+            expiry: "2026-10-01T01:00:00Z".to_string(),
+            intent: Some(intent),
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn a_valid_context_round_trips(context in arb_context()) {
+        prop_assert!(context.validate().is_ok());
+        let json = serde_json::to_string(&context).unwrap();
+        let decoded: DecisionContext = serde_json::from_str(&json).unwrap();
+        prop_assert_eq!(&context, &decoded);
+    }
+
+    #[test]
+    fn a_valid_envelope_round_trips(envelope in arb_envelope()) {
+        prop_assert!(envelope.validate().is_ok());
+        prop_assert!(envelope.is_executable());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let decoded: DecisionEnvelope = serde_json::from_str(&json).unwrap();
+        prop_assert_eq!(&envelope, &decoded);
+    }
+
+    #[test]
+    fn a_non_executable_outcome_never_carries_an_intent(
+        envelope in arb_envelope(),
+        outcome in prop::sample::select(vec![
+            EnvelopeOutcome::Denied,
+            EnvelopeOutcome::Pending,
+            EnvelopeOutcome::NoRoute,
+            EnvelopeOutcome::Invalid,
+        ]),
+    ) {
+        let mut candidate = envelope;
+        candidate.outcome = outcome;
+        prop_assert!(candidate.validate().is_err());
+    }
+
+    #[test]
+    fn an_unknown_context_version_is_rejected(mut context in arb_context(), version in 2u32..1000) {
+        context.schema_version = version;
+        prop_assert!(context.validate().is_err());
+    }
+
+    #[test]
+    fn attempt_budget_validation_matches_the_bound(
+        semantic in 0u32..8,
+        max in 0u32..8,
+        step_retries in 0u32..8,
+    ) {
+        let budget = AttemptBudget::with_attempts(semantic, max, step_retries);
+        prop_assert_eq!(budget.validate().is_ok(), semantic <= max);
+        prop_assert_eq!(budget.is_exhausted(), semantic >= max);
+        prop_assert_eq!(budget.remaining(), max.saturating_sub(semantic));
+    }
+
+    #[test]
+    fn accepting_attempts_never_crosses_the_bound(max in 0u32..8) {
+        let mut budget = AttemptBudget::new(max);
+        let mut accepted = 0u32;
+        while budget.accept_attempt().is_ok() {
+            accepted += 1;
+            prop_assert!(budget.semantic_attempts <= max);
+        }
+        prop_assert_eq!(accepted, max);
+        prop_assert_eq!(budget.semantic_attempts, max);
+    }
+
+    #[test]
+    fn step_retries_never_change_the_semantic_count(
+        semantic in 0u32..4,
+        max in 0u32..4,
+        retries in 0u32..6,
+    ) {
+        let mut budget = AttemptBudget::with_attempts(semantic.min(max), max, 0);
+        let before = budget.semantic_attempts;
+        for _ in 0..retries {
+            budget.record_step_retry();
+        }
+        prop_assert_eq!(budget.semantic_attempts, before);
+        prop_assert_eq!(budget.step_retries, retries);
+    }
 }

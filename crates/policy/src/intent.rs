@@ -47,6 +47,16 @@ pub fn build_execution_intent(
         "schema_version".to_string(),
         serde_json::json!(snapshot.schema_version),
     );
+    // A `ROUTE` decision carries its generic constraints to the execution
+    // backend as policy context; the core itself performs no routing.
+    if let Some(route) = &proposal.route {
+        intent.policy_context.insert(
+            "route".to_string(),
+            serde_json::to_value(route).map_err(|error| {
+                PortError::PolicyFailed(format!("cannot serialize route constraints: {error}"))
+            })?,
+        );
+    }
 
     intent.validate()?;
     Ok(intent)

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "context_id": "ctx-initial-0001",
+  "kind": "INITIAL",
+  "profile": "tactus.generic.v1",
+  "snapshot": {
+    "schema_version": 1,
+    "snapshot_id": "snap-0001",
+    "timestamp": "2026-10-01T00:00:00Z",
+    "domain": "software",
+    "subject": { "type": "task", "id": "task-123" },
+    "facts": [
+      { "key": "subject.revision", "value": 1 },
+      { "key": "attempts.semantic", "value": 0 },
+      { "key": "attempts.max_semantic", "value": 2 },
+      { "key": "attempts.step_retries", "value": 0 },
+      { "key": "capability.id", "value": "demo.verify" }
+    ],
+    "capabilities": ["demo.verify"],
+    "constraints": []
+  },
+  "revision": 1,
+  "attempts": {
+    "semantic_attempts": 0,
+    "max_semantic_attempts": 2,
+    "step_retries": 0
+  },
+  "grants": ["demo.verify"]
+}

@@ -18,7 +18,7 @@ pub fn validate_capability(capability: &Capability) -> Result<(), ContractError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ictus_core::{DecisionKind, ProviderMetadata, RiskClass, Subject, SCHEMA_VERSION};
+    use ictus_core::{DecisionKind, ProviderMetadata, RiskClass, Subject, DECISION_SCHEMA_VERSION};
 
     fn provider() -> ProviderMetadata {
         ProviderMetadata::rules("test-rules")
@@ -41,7 +41,7 @@ mod tests {
     fn capability_requiring_decision_without_capability_is_rejected() {
         let proposal = DecisionProposal::new(
             "p1",
-            DecisionKind::Retry,
+            DecisionKind::Reexecute,
             Subject::new("task", "t1"),
             provider(),
             "2026-10-01T00:00:00Z",
@@ -58,7 +58,7 @@ mod tests {
             provider(),
             "2026-10-01T00:00:00Z",
         );
-        proposal.schema_version = SCHEMA_VERSION + 1;
+        proposal.schema_version = DECISION_SCHEMA_VERSION + 1;
         assert!(matches!(
             validate_proposal(&proposal),
             Err(ContractError::UnsupportedSchemaVersion { .. })

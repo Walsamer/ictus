@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ictus.dev/contracts/decision-envelope.schema.json",
+  "title": "DecisionEnvelope",
+  "description": "Versioned validated decision result. Binds the subject, snapshot digest/revision, proposal and policy identity/version/verdict, capability validation, route, approvals, the resolved effect and an expiry. Only an EXECUTABLE envelope may carry an ExecutionIntent; DENIED, PENDING, NO_ROUTE and INVALID outcomes carry none.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "envelope_id",
+    "subject",
+    "snapshot",
+    "proposal",
+    "policy",
+    "capability_validation",
+    "outcome",
+    "expiry"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "envelope_id": { "type": "string", "minLength": 1 },
+    "subject": { "$ref": "#/$defs/subject" },
+    "snapshot": { "$ref": "#/$defs/snapshot_ref" },
+    "proposal": { "$ref": "#/$defs/proposal_binding" },
+    "policy": { "$ref": "#/$defs/policy_binding" },
+    "capability_validation": { "$ref": "#/$defs/capability_validation" },
+    "route": {
+      "$ref": "proposal.schema.json#/$defs/route",
+      "description": "Generic route constraints, present when routing was considered."
+    },
+    "approvals": { "type": "array", "items": { "$ref": "#/$defs/approval_binding" } },
+    "outcome": {
+      "type": "string",
+      "enum": ["EXECUTABLE", "DENIED", "PENDING", "NO_ROUTE", "INVALID"]
+    },
+    "expiry": { "type": "string", "format": "date-time" },
+    "intent": { "$ref": "execution-intent.schema.json" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "outcome": { "const": "EXECUTABLE" } },
+        "required": ["outcome"]
+      },
+      "then": {
+        "required": ["intent"],
+        "properties": {
+          "capability_validation": {
+            "properties": {
+              "admitted": { "const": true },
+              "permitted": { "const": true }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": { "intent": false }
+      }
+    }
+  ],
+  "$defs": {
+    "subject": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "snapshot_ref": {
+      "type": "object",
+      "required": ["snapshot_id", "revision", "digest"],
+      "properties": {
+        "snapshot_id": { "type": "string", "minLength": 1 },
+        "revision": { "type": "integer", "minimum": 0 },
+        "digest": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "proposal_binding": {
+      "type": "object",
+      "required": ["proposal_id", "schema_version", "decision"],
+      "properties": {
+        "proposal_id": { "type": "string", "minLength": 1 },
+        "schema_version": { "type": "integer", "enum": [1, 2] },
+        "decision": {
+          "type": "string",
+          "enum": ["REEXECUTE", "ROUTE", "DECOMPOSE", "ESCALATE", "ABORT", "EXECUTE_CAPABILITY"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "policy_binding": {
+      "type": "object",
+      "required": ["policy_decision_id", "policy_version", "verdict"],
+      "properties": {
+        "policy_decision_id": { "type": "string", "minLength": 1 },
+        "policy_version": { "type": "string", "minLength": 1 },
+        "verdict": {
+          "type": "string",
+          "enum": ["ALLOW", "DENY", "REQUIRE_APPROVAL", "MODIFY"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "capability_validation": {
+      "type": "object",
+      "required": ["capability", "admitted", "permitted", "reason"],
+      "properties": {
+        "capability": { "type": "string", "minLength": 1 },
+        "admitted": { "type": "boolean" },
+        "permitted": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "approval_binding": {
+      "type": "object",
+      "required": ["name", "satisfied"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "satisfied": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

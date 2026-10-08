@@ -54,9 +54,9 @@ fn timeout_without_a_capability_escalates() {
 }
 
 #[test]
-fn process_crash_within_budget_retries() {
+fn process_crash_within_budget_reexecutes() {
     let proposal = propose(&snapshot("PROCESS_CRASH", 1, 3, Some("demo.verify")));
-    assert_eq!(proposal.decision, DecisionKind::Retry);
+    assert_eq!(proposal.decision, DecisionKind::Reexecute);
 }
 
 #[test]
@@ -66,9 +66,9 @@ fn provider_unavailable_with_exhausted_budget_escalates() {
 }
 
 #[test]
-fn resource_exhausted_within_budget_retries() {
+fn resource_exhausted_within_budget_reexecutes() {
     let proposal = propose(&snapshot("RESOURCE_EXHAUSTED", 0, 1, Some("demo.verify")));
-    assert_eq!(proposal.decision, DecisionKind::Retry);
+    assert_eq!(proposal.decision, DecisionKind::Reexecute);
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn invalid_registered_capability_is_denied() {
 }
 
 #[test]
-fn retry_within_budget_is_allowed() {
+fn reexecution_within_budget_is_allowed() {
     let snapshot = snapshot("WORKER_TIMEOUT", 0, 2, Some("demo.verify"));
     let decision = evaluate(&snapshot, &propose(&snapshot));
     assert_eq!(decision.decision, PolicyDecisionKind::Allow);

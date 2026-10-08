@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ictus.dev/contracts/decision-context.schema.json",
+  "title": "DecisionContext",
+  "description": "Versioned initial/recovery context: the normalized StateSnapshot plus the subject revision, the semantic attempt budget, generic facts and grants. An INITIAL context must not bind or fabricate an observation; a RECOVERY context binds the failed attempt and snapshot. All fields are generic and carry no domain entity.",
+  "type": "object",
+  "required": ["schema_version", "context_id", "kind", "profile", "snapshot", "revision", "attempts"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "context_id": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "enum": ["INITIAL", "RECOVERY"] },
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S+$",
+      "description": "Generic fact-key profile id. A consumer uses it to detect a profile mismatch; the core never imports the profile's domain."
+    },
+    "snapshot": { "$ref": "state-snapshot.schema.json" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "attempts": { "$ref": "#/$defs/attempt_budget" },
+    "grants": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "recovery": { "$ref": "#/$defs/recovery_binding" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "kind": { "const": "INITIAL" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "properties": {
+          "recovery": false,
+          "snapshot": {
+            "properties": {
+              "facts": {
+                "not": {
+                  "contains": {
+                    "properties": { "key": { "const": "observation.category" } },
+                    "required": ["key"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "RECOVERY" } },
+        "required": ["kind"]
+      },
+      "then": { "required": ["recovery"] }
+    }
+  ],
+  "$defs": {
+    "attempt_budget": {
+      "type": "object",
+      "required": ["semantic_attempts", "max_semantic_attempts", "step_retries"],
+      "properties": {
+        "semantic_attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Accepted semantic attempts, including the attempt that just failed. A first failure is 1."
+        },
+        "max_semantic_attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total semantic attempt bound. Missing or invalid values fail closed."
+        },
+        "step_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Execution-backend step retries. Deliberately separate from the semantic budget."
+        }
+      },
+      "additionalProperties": false
+    },
+    "snapshot_ref": {
+      "type": "object",
+      "required": ["snapshot_id", "revision", "digest"],
+      "properties": {
+        "snapshot_id": { "type": "string", "minLength": 1 },
+        "revision": { "type": "integer", "minimum": 0 },
+        "digest": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "recovery_binding": {
+      "type": "object",
+      "required": ["failed_attempt_id", "failed_intent_id", "failed_snapshot", "observation"],
+      "properties": {
+        "failed_attempt_id": { "type": "string", "minLength": 1 },
+        "failed_intent_id": { "type": "string", "minLength": 1 },
+        "failed_snapshot": { "$ref": "#/$defs/snapshot_ref" },
+        "observation": { "$ref": "observation.schema.json" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

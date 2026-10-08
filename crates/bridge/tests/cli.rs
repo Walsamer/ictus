@@ -63,7 +63,7 @@ fn stdout_json(output: &Output) -> serde_json::Value {
 // -- decide -----------------------------------------------------------------
 
 #[test]
-fn decide_retry_within_budget_is_executable() {
+fn decide_reexecute_within_budget_is_executable() {
     let out = run(
         &["decide", "--approve"],
         &snapshot("WORKER_TIMEOUT", 0, 2, "demo.verify"),
@@ -76,7 +76,7 @@ fn decide_retry_within_budget_is_executable() {
         String::from_utf8_lossy(&out.stderr)
     );
     let trace = stdout_json(&out);
-    assert_eq!(trace["proposal"]["decision"], "RETRY");
+    assert_eq!(trace["proposal"]["decision"], "REEXECUTE");
     assert_eq!(trace["policy_decision"]["decision"], "ALLOW");
     assert_eq!(trace["execution_intent"]["capability"], "demo.verify");
 }
@@ -193,7 +193,7 @@ fn decide_data_quality_capability_is_allowed() {
         String::from_utf8_lossy(&out.stderr)
     );
     let trace = stdout_json(&out);
-    assert_eq!(trace["proposal"]["decision"], "RETRY");
+    assert_eq!(trace["proposal"]["decision"], "REEXECUTE");
     assert_eq!(
         trace["execution_intent"]["capability"],
         "data.quality_check"
@@ -216,7 +216,7 @@ fn decide_system_diagnose_capability_is_allowed() {
         String::from_utf8_lossy(&out.stderr)
     );
     let trace = stdout_json(&out);
-    assert_eq!(trace["proposal"]["decision"], "RETRY");
+    assert_eq!(trace["proposal"]["decision"], "REEXECUTE");
     assert_eq!(trace["execution_intent"]["capability"], "system.diagnose");
 }
 
@@ -293,7 +293,7 @@ fn flow_runs_snapshot_to_result() {
         String::from_utf8_lossy(&out.stderr)
     );
     let trace = stdout_json(&out);
-    assert_eq!(trace["proposal"]["decision"], "RETRY");
+    assert_eq!(trace["proposal"]["decision"], "REEXECUTE");
     assert_eq!(trace["execution_result"]["status"], "succeeded");
 }
 

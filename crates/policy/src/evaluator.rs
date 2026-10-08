@@ -65,14 +65,14 @@ impl PolicyEvaluator for DefaultPolicyEvaluator {
 
         // 2. Decisions that carry no execution.
         match proposal.decision {
-            DecisionKind::Abort | DecisionKind::Escalate => {
+            DecisionKind::Abort | DecisionKind::Escalate | DecisionKind::Decompose => {
                 decision.decision = PolicyDecisionKind::Allow;
                 return Ok(decision.with_reason(format!(
                     "{:?} is always permitted and never reaches the execution backend",
                     proposal.decision
                 )));
             }
-            DecisionKind::Retry | DecisionKind::ExecuteCapability => {}
+            DecisionKind::Reexecute | DecisionKind::ExecuteCapability | DecisionKind::Route => {}
         }
 
         // 3. A capability-carrying decision must reference a known capability.
@@ -97,14 +97,15 @@ impl PolicyEvaluator for DefaultPolicyEvaluator {
             return Ok(decision.with_reason(format!("invalid capability: {error}")));
         }
 
-        // 4. Retry budget is enforced here, not in the execution backend.
-        if proposal.decision == DecisionKind::Retry {
+        // 4. The semantic re-execution budget is enforced here, not in the
+        // execution backend. This is distinct from Dagster's own step retries.
+        if proposal.decision == DecisionKind::Reexecute {
             let attempt = snapshot.fact_i64("retry.attempt").unwrap_or(0);
             let budget = snapshot.fact_i64("retry.budget").unwrap_or(0);
             if attempt >= budget {
-                return Ok(
-                    decision.with_reason(format!("retry budget exhausted ({attempt}/{budget})"))
-                );
+                return Ok(decision.with_reason(format!(
+                    "re-execution budget exhausted ({attempt}/{budget})"
+                )));
             }
         }
 
@@ -231,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn retry_budget_is_enforced() {
+    fn reexecution_budget_is_enforced() {
         let evaluator = DefaultPolicyEvaluator::new();
         let snapshot = snapshot()
             .with_fact(ictus_core::Fact::integer("retry.attempt", 2))
@@ -239,7 +240,73 @@ mod tests {
         let decision = evaluator
             .evaluate(
                 &snapshot,
-                &proposal(DecisionKind::Retry, Some("demo.verify")),
+                &proposal(DecisionKind::Reexecute, Some("demo.verify")),
+                &registry(),
+                &crate::approval::AlwaysApproved,
+            )
+            .unwrap();
+        assert_eq!(decision.decision, PolicyDecisionKind::Deny);
+    }
+
+    #[test]
+    fn decompose_is_allowed_and_produces_no_intent() {
+        let evaluator = DefaultPolicyEvaluator::new();
+        let decision = evaluator
+            .evaluate(
+                &snapshot(),
+                &proposal(DecisionKind::Decompose, None),
+                &registry(),
+                &crate::approval::NeverApproved,
+            )
+            .unwrap();
+        assert_eq!(decision.decision, PolicyDecisionKind::Allow);
+        assert!(!decision.is_executable());
+        assert!(decision.modified_intent.is_none());
+    }
+
+    #[test]
+    fn route_is_allowed_and_carries_constraints_into_the_intent() {
+        use ictus_core::RouteConstraints;
+        let evaluator = DefaultPolicyEvaluator::new();
+        let proposal = proposal(DecisionKind::Route, Some("demo.verify")).with_route(
+            RouteConstraints::new()
+                .with_exclude_backend("backend.a")
+                .with_preferred_backend("backend.b")
+                .with_required_provider("provider.c")
+                .with_required_runtime("wasm"),
+        );
+        let decision = evaluator
+            .evaluate(
+                &snapshot(),
+                &proposal,
+                &registry(),
+                &crate::approval::AlwaysApproved,
+            )
+            .unwrap();
+        assert_eq!(decision.decision, PolicyDecisionKind::Allow);
+        let intent = decision.modified_intent.unwrap();
+        assert_eq!(
+            intent.policy_context["route"]["preferred_backend"],
+            "backend.b"
+        );
+        assert_eq!(
+            intent.policy_context["route"]["exclude_backend"],
+            "backend.a"
+        );
+        assert_eq!(
+            intent.policy_context["route"]["required_provider"],
+            "provider.c"
+        );
+        assert_eq!(intent.policy_context["route"]["required_runtime"], "wasm");
+    }
+
+    #[test]
+    fn route_without_a_capability_is_denied() {
+        let evaluator = DefaultPolicyEvaluator::new();
+        let decision = evaluator
+            .evaluate(
+                &snapshot(),
+                &proposal(DecisionKind::Route, None),
                 &registry(),
                 &crate::approval::AlwaysApproved,
             )
