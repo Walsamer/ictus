@@ -25,6 +25,7 @@ SCHEMA_EXAMPLE_PAIRS = [
     ("decision-context.schema.json", "decision-context.initial.json"),
     ("decision-context.schema.json", "decision-context.recovery.json"),
     ("decision-envelope.schema.json", "decision-envelope.executable.json"),
+    ("decision-envelope.schema.json", "decision-envelope.granted.json"),
     ("decision-envelope.schema.json", "decision-envelope.denied.json"),
     ("decision-envelope.schema.json", "decision-envelope.pending.json"),
 ]
@@ -229,6 +230,14 @@ def test_executable_envelope_requires_an_intent() -> None:
 def test_executable_envelope_requires_a_permitted_capability() -> None:
     payload = _example("decision-envelope.executable.json")
     payload["capability_validation"]["permitted"] = False
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_satisfied_approval_grant_is_bound_and_wildcards_are_rejected() -> None:
+    payload = _example("decision-envelope.granted.json")
+    _validator("decision-envelope.schema.json").validate(payload)
+    payload["grants"][0]["approval"] = "*"
     with pytest.raises(ValidationError):
         _validator("decision-envelope.schema.json").validate(payload)
 

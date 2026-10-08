@@ -12,6 +12,7 @@
 //! ```
 
 pub mod approval;
+pub mod composition;
 pub mod evaluator;
 pub mod intent;
 pub mod registry;
@@ -19,6 +20,10 @@ pub mod rules;
 pub mod validation;
 
 pub use approval::{AlwaysApproved, NeverApproved, TokenApprovalProvider};
+pub use composition::{
+    revalidate_modified_intent, LocalPolicyComposition, TrustedDecision, ValidationRequest,
+    DEFAULT_POLICY_VERSION,
+};
 pub use evaluator::DefaultPolicyEvaluator;
 pub use intent::build_execution_intent;
 pub use registry::InMemoryCapabilityRegistry;
