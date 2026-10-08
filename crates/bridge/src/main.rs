@@ -38,6 +38,7 @@ ictus — typed decision/policy core + Dagster execution bridge
 USAGE:
     ictus decide  [--approve | --approvals <file.json>] [--capabilities <file.json>]   # snapshot JSON on stdin
     ictus execute                                                                       # intent JSON on stdin
+    ictus submit                                                                        # intent JSON on stdin, durable receipt out
     ictus flow    [--approve | --approvals <file.json>] [--capabilities <file.json>]   # snapshot JSON on stdin
 
 NOTES:
@@ -187,6 +188,17 @@ fn run_execute() -> Result<ExitCode, String> {
     })
 }
 
+fn run_submit() -> Result<ExitCode, String> {
+    let raw = read_stdin()?;
+    let intent: ExecutionIntent =
+        serde_json::from_str(&raw).map_err(|e| format!("invalid ExecutionIntent JSON: {e}"))?;
+    let receipt = JsonStdioBackend::from_env()
+        .submit(&intent)
+        .map_err(|e| e.to_string())?;
+    print_json(&serde_json::to_value(&receipt).map_err(|e| e.to_string())?)?;
+    Ok(ExitCode::SUCCESS)
+}
+
 fn run_flow(args: &[String]) -> Result<ExitCode, String> {
     let flags = parse_flags(args)?;
     let (proposal, policy_decision) = propose_and_evaluate(&flags)?;
@@ -224,6 +236,7 @@ fn main() -> ExitCode {
     let outcome = match args.first().map(String::as_str) {
         Some("decide") => run_decide(&args[1..]),
         Some("execute") => run_execute(),
+        Some("submit") => run_submit(),
         Some("flow") => run_flow(&args[1..]),
         Some("--help") | Some("-h") | None => {
             eprint!("{USAGE}");

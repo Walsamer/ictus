@@ -5,6 +5,7 @@
 //! Dagster, HTTP, a rules engine, an LLM) implement these traits; the core and
 //! policy layers depend on the traits, never on a concrete adapter.
 
+pub use ictus_core::ExecutionReceipt;
 use ictus_core::{
     Capability, DecisionProposal, ExecutionIntent, ExecutionResult, PolicyDecision, StateSnapshot,
     Subject,
@@ -23,6 +24,10 @@ pub enum PortError {
     CapabilityRegistry(String),
     #[error("execution backend failed: {0}")]
     ExecutionFailed(String),
+    #[error("execution submission conflicts with an existing receipt: {0}")]
+    SubmissionConflict(String),
+    #[error("execution receipt is unknown: {0}")]
+    UnknownReceipt(String),
     #[error("approval provider failed: {0}")]
     ApprovalFailed(String),
     #[error("evidence store failed: {0}")]
@@ -84,6 +89,30 @@ pub trait PolicyEvaluator {
 /// The backend must never mutate decision/policy state; it reports facts only.
 pub trait ExecutionBackend {
     fn execute(&self, intent: &ExecutionIntent) -> Result<ExecutionResult, PortError>;
+}
+
+/// State returned when querying a durable execution receipt.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExecutionQuery {
+    Pending,
+    Terminal(ExecutionResult),
+}
+
+/// Asynchronous execution boundary for production adapters.
+///
+/// This intentionally does not expose queues, launchers, retries or workflow
+/// state.  Those remain owned by Dagster.  The older [`ExecutionBackend`]
+/// remains useful for small synchronous examples.
+pub trait DurableExecutionBackend {
+    fn submit(
+        &self,
+        intent: &ExecutionIntent,
+        intent_digest: &str,
+    ) -> Result<ExecutionReceipt, PortError>;
+
+    fn query(&self, receipt: &ExecutionReceipt) -> Result<ExecutionQuery, PortError>;
+
+    fn cancel(&self, receipt: &ExecutionReceipt) -> Result<(), PortError>;
 }
 
 /// Stores/records evidence references.

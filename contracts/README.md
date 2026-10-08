@@ -18,6 +18,7 @@ during a migration, and new wire versions change only when required.
 | PolicyDecision | `policy-decision.schema.json` | `ictus_core::PolicyDecision` | — |
 | DecisionEnvelope | `decision-envelope.schema.json` | `ictus_core::DecisionEnvelope` | — (validated output) |
 | ExecutionIntent | `execution-intent.schema.json` | `ictus_core::ExecutionIntent` | bridge input |
+| ExecutionReceipt | `execution-receipt.schema.json` | `ictus_ports::ExecutionReceipt` | durable submit/query |
 | ExecutionResult | `execution-result.schema.json` | `ictus_core::ExecutionResult` | bridge output |
 
 ## Conventions

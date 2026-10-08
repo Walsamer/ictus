@@ -127,6 +127,19 @@ def test_explicit_failure_category_wins() -> None:
     assert payload["observation"]["category"] == "WORKER_TIMEOUT"
 
 
+def test_known_terminal_runtime_statuses_preserve_timeout_and_cancellation() -> None:
+    timed_out = execution_result_from_run(
+        execution_id="timeout", intent_id="intent", success=False, run_status="TIMED_OUT"
+    )
+    cancelled = execution_result_from_run(
+        execution_id="cancel", intent_id="intent", success=False, run_status="CANCELED"
+    )
+    assert timed_out["status"] == "timed_out"
+    assert timed_out["observation"]["category"] == "WORKER_TIMEOUT"
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["observation"]["category"] == "UNKNOWN"
+
+
 def test_result_always_carries_intent_id_and_schema_version() -> None:
     payload = execution_result_from_run(
         execution_id="exec-5", intent_id="intent-5", success=True

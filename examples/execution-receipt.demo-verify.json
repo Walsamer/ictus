@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "receipt_id": "5e3b5bb6-088f-4bb6-a782-322918a48d27",
+  "execution_id": "5e3b5bb6-088f-4bb6-a782-322918a48d27",
+  "intent_id": "intent:demo-verify",
+  "intent_digest": "13b279568d32cf63c1c00d0d9d94d1b4d68fb0e7dbb10a9171f3e248162590c0",
+  "status": "queued",
+  "submitted_at": "2026-10-08T18:00:00Z",
+  "evidence": [
+    {
+      "kind": "dagster_run",
+      "uri": "dagster://runs/5e3b5bb6-088f-4bb6-a782-322918a48d27"
+    }
+  ]
+}

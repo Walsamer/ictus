@@ -39,7 +39,9 @@ pub use envelope::{
     ProposalBinding, ValidationBinding,
 };
 pub use evidence::EvidenceRef;
-pub use execution::{ExecutionIntent, ExecutionResult, ExecutionStatus, RequestedBy};
+pub use execution::{
+    ExecutionIntent, ExecutionReceipt, ExecutionResult, ExecutionStatus, RequestedBy,
+};
 pub use grant::ApprovalGrant;
 pub use observation::{ExecutionObservation, ObservationCategory};
 pub use policy::{PolicyDecision, PolicyDecisionKind};
