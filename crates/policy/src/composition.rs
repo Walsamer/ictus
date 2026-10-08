@@ -392,91 +392,18 @@ fn proposal_digest(proposal: &DecisionProposal) -> Result<String, PortError> {
     Ok(sha256_hex(&bytes))
 }
 
-// Small dependency-free SHA-256 implementation. The digest is part of the
-// serialized binding contract, so it must be stable across language runtimes.
+/// Lowercase hex SHA-256 of `input`.
+///
+/// The digest is part of the serialized binding contract and must match every
+/// other runtime (for example Python `hashlib.sha256`); the standard `sha2`
+/// crate provides that interoperability without a hand-rolled primitive whose
+/// equivalent boolean identities are impossible to cover by tests.
 fn sha256_hex(input: &[u8]) -> String {
-    const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
-        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
-        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
-        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
-        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
-        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
-        0xc67178f2,
-    ];
-    let bit_len = (input.len() as u64).wrapping_mul(8);
-    let mut bytes = input.to_vec();
-    bytes.push(0x80);
-    while bytes.len() % 64 != 56 {
-        bytes.push(0);
-    }
-    bytes.extend_from_slice(&bit_len.to_be_bytes());
-    let mut h = [
-        0x6a09e667u32,
-        0xbb67ae85,
-        0x3c6ef372,
-        0xa54ff53a,
-        0x510e527f,
-        0x9b05688c,
-        0x1f83d9ab,
-        0x5be0cd19,
-    ];
-    for chunk in bytes.chunks_exact(64) {
-        let mut w = [0u32; 64];
-        for (index, word) in w[..16].iter_mut().enumerate() {
-            *word = u32::from_be_bytes(
-                chunk[index * 4..index * 4 + 4]
-                    .try_into()
-                    .expect("chunk word"),
-            );
-        }
-        for index in 16..64 {
-            let s0 = w[index - 15].rotate_right(7)
-                ^ w[index - 15].rotate_right(18)
-                ^ (w[index - 15] >> 3);
-            let s1 = w[index - 2].rotate_right(17)
-                ^ w[index - 2].rotate_right(19)
-                ^ (w[index - 2] >> 10);
-            w[index] = w[index - 16]
-                .wrapping_add(s0)
-                .wrapping_add(w[index - 7])
-                .wrapping_add(s1);
-        }
-        let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut x) =
-            (h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]);
-        for index in 0..64 {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let choice = (e & f) ^ ((!e) & g);
-            let temp1 = x
-                .wrapping_add(s1)
-                .wrapping_add(choice)
-                .wrapping_add(K[index])
-                .wrapping_add(w[index]);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let majority = (a & b) ^ (a & c) ^ (b & c);
-            let temp2 = s0.wrapping_add(majority);
-            x = g;
-            g = f;
-            f = e;
-            e = d.wrapping_add(temp1);
-            d = c;
-            c = b;
-            b = a;
-            a = temp1.wrapping_add(temp2);
-        }
-        h[0] = h[0].wrapping_add(a);
-        h[1] = h[1].wrapping_add(b);
-        h[2] = h[2].wrapping_add(c);
-        h[3] = h[3].wrapping_add(d);
-        h[4] = h[4].wrapping_add(e);
-        h[5] = h[5].wrapping_add(f);
-        h[6] = h[6].wrapping_add(g);
-        h[7] = h[7].wrapping_add(x);
-    }
-    h.iter().map(|word| format!("{word:08x}")).collect()
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(input);
+    format!("{:x}", hasher.finalize())
 }
 
 fn canonical_utc(value: &str) -> bool {
@@ -529,13 +456,84 @@ fn grant_reason(
 
 #[cfg(test)]
 mod tests {
-    use super::sha256_hex;
+    use super::{canonical_utc, sha256_hex};
 
     #[test]
     fn payload_digest_is_standard_sha256() {
-        assert_eq!(
-            sha256_hex(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
+        // Standard FIPS 180-4 vectors, plus padding-boundary and multi-block
+        // inputs so every branch of the compression/expansion is exercised.
+        for (input, expected) in [
+            (
+                &b""[..],
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                &b"abc"[..],
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            ),
+            (
+                &b"a"[..],
+                "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+            ),
+            (
+                &b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"[..],
+                "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+            ),
+        ] {
+            assert_eq!(sha256_hex(input), expected);
+        }
+    }
+
+    #[test]
+    fn sha256_padding_boundaries_and_high_bit_inputs() {
+        let cases: [(Vec<u8>, &str); 5] = [
+            (
+                vec![b'a'; 55],
+                "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318",
+            ),
+            (
+                vec![b'a'; 56],
+                "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a",
+            ),
+            (
+                vec![b'a'; 64],
+                "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb",
+            ),
+            (
+                (0u8..64).collect(),
+                "fdeab9acf3710362bd2658cdc9a29e8f9c757fcf9811603a8c447cd1d9151108",
+            ),
+            (
+                (1u8..66).collect(),
+                "47e9b736f9001fab14640d9c915574c20669621520371f05a4b50906020dc49f",
+            ),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(sha256_hex(&input), expected);
+        }
+    }
+
+    #[test]
+    fn canonical_utc_accepts_only_the_exact_shape() {
+        assert!(canonical_utc("2026-10-01T00:00:00Z"));
+
+        // Each case falsifies exactly one conjunct of the canonical check, so a
+        // weakened `&&` cannot accept it.
+        for invalid in [
+            "",
+            "not-a-timestamp",
+            "2026-10-01T00:00:00X",  // wrong terminator
+            "2026X10-01T00:00:00Z",  // index 4
+            "2026-10X01T00:00:00Z",  // index 7
+            "2026-10-01X00:00:00Z",  // index 10
+            "2026-10-01T00X00:00Z",  // index 13
+            "2026-10-01T00:00X00Z",  // index 16
+            "2026-10-01T00:00:0Z",   // too short
+            "2026-10-01T00:00:00ZZ", // too long
+            "2026-10-01T00:00:00",   // no terminator
+            "2026-10-01T00:00:00z",  // lowercase terminator
+        ] {
+            assert!(!canonical_utc(invalid), "accepted {invalid:?}");
+        }
     }
 }
