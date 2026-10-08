@@ -2,11 +2,12 @@
 
 use ictus_core::{
     ApprovalGrant, AttemptBudget, Capability, DecisionContext, DecisionKind, DecisionProposal,
-    EvidenceRef, PolicyDecisionKind, ProviderMetadata, RiskClass, SnapshotRef, StateSnapshot,
-    Subject,
+    EvidenceRef, ObservationState, PolicyDecisionKind, ProviderMetadata, RiskClass,
+    RouteDescriptor, RouteFactRef, RouteFacts, RouteIdentity, RouteObservation, SnapshotRef,
+    StateSnapshot, Subject,
 };
 use ictus_policy::{
-    revalidate_modified_intent, InMemoryCapabilityRegistry, LocalPolicyComposition,
+    revalidate_modified_intent, InMemoryCapabilityRegistry, LocalPolicyComposition, RoutingPolicy,
     ValidationRequest, DEFAULT_POLICY_VERSION,
 };
 
@@ -58,6 +59,34 @@ fn grant() -> ApprovalGrant {
         "approval_record",
         "tactus://approvals/grant-1",
     ))
+}
+
+fn route_candidate(backend: &str, state: ObservationState) -> ictus_core::RouteCandidate {
+    let route = RouteIdentity::new(backend, "provider.a", "container", "model.a");
+    RouteFacts {
+        descriptor: RouteDescriptor::new(RouteFactRef::new("descriptor.a", 11), route)
+            .with_capability("software.promote"),
+        health: RouteObservation::new(
+            RouteFactRef::new("health.a", 12),
+            RouteIdentity::new(backend, "provider.a", "container", "model.a"),
+            state,
+            "2026-10-01T00:00:00Z",
+        ),
+        quota: RouteObservation::new(
+            RouteFactRef::new("quota.a", 13),
+            RouteIdentity::new(backend, "provider.a", "container", "model.a"),
+            state,
+            "2026-10-01T00:00:00Z",
+        ),
+        disablement: RouteObservation::new(
+            RouteFactRef::new("disablement.a", 14),
+            RouteIdentity::new(backend, "provider.a", "container", "model.a"),
+            state,
+            "2026-10-01T00:00:00Z",
+        ),
+    }
+    .try_into()
+    .unwrap()
 }
 
 fn validate(grants: &[ApprovalGrant]) -> ictus_policy::TrustedDecision {
@@ -201,4 +230,55 @@ fn unknown_capability_and_policy_fail_closed() {
         .unwrap();
     assert!(!rejected.envelope().is_executable());
     assert_eq!(rejected.envelope().policy.verdict, PolicyDecisionKind::Deny);
+}
+
+#[test]
+fn route_selection_binds_fact_revisions_and_no_route_carries_no_intent() {
+    let context = context();
+    let proposal = DecisionProposal::new(
+        "route-proposal",
+        DecisionKind::Route,
+        Subject::new("task", "t1"),
+        ProviderMetadata::rules("rules.v1"),
+        "2026-10-01T00:00:00Z",
+    )
+    .with_capability("software.promote")
+    .with_route(ictus_core::RouteConstraints::new().with_preferred_backend("backend.a"));
+    let registry = registry();
+    let grants = [grant()];
+    let request = || ValidationRequest {
+        context: &context,
+        snapshot: SnapshotRef::new("snap-1", 7, "digest-1"),
+        proposal: &proposal,
+        capabilities: &registry,
+        grants: &grants,
+        expiry: "2026-10-01T01:00:00Z",
+    };
+    let selected = LocalPolicyComposition::default()
+        .validate_with_route_selection(
+            request(),
+            &[route_candidate("backend.a", ObservationState::Available)],
+            &RoutingPolicy::default(),
+            &[],
+        )
+        .unwrap();
+    let intent = selected.executable_intent().unwrap();
+    assert_eq!(
+        intent.selected_route.as_ref().unwrap().route.backend,
+        "backend.a"
+    );
+    assert_eq!(intent.selected_route.as_ref().unwrap().health.revision, 12);
+    assert_eq!(
+        intent.policy_context["proposal_digest"],
+        selected.envelope().validation.proposal_digest
+    );
+
+    let no_route = LocalPolicyComposition::default()
+        .validate_with_route_selection(request(), &[], &RoutingPolicy::default(), &[])
+        .unwrap();
+    assert_eq!(
+        no_route.envelope().outcome,
+        ictus_core::EnvelopeOutcome::NoRoute
+    );
+    assert!(no_route.executable_intent().is_none());
 }

@@ -23,7 +23,19 @@ implementation PR; architecture documentation does not promote that commit.
 
 - Versioned initial/recovery context profile and aligned semantic-budget facts.
 - Validated decision/intent binding to subject, revision, policy and real grants.
-- Actual compatibility/route selection and semantic recovery policy using facts.
+- Semantic recovery policy using facts.
+
+## Routing policy
+
+Ictus now owns generic compatibility and deterministic route selection. Versioned
+descriptor/health/quota/disablement facts are normalized into candidates; the
+selector rejects disabled, incompatible, unavailable, excluded and
+policy-forbidden routes, applies explicit stale/unknown handling, and resolves
+ties by full route identity. A selected `ExecutionIntent` carries every source
+fact identity/revision so Tactus can reject stale admission without reranking.
+Runtime adapters must execute that exact route or report a fact; they cannot
+silently substitute a provider or model. Compatibility callers should migrate
+from `BackendRegistry.compatible()` to `LocalPolicyComposition::validate_with_route_selection`.
 - Persistent asynchronous submission, receipt/reconciliation and result delivery.
 - Cross-repository behavioral fixtures and the five-scenario vertical slice.
 

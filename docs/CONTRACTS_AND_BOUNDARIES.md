@@ -79,7 +79,10 @@ EXECUTE_CAPABILITY
 
 A `ROUTE` may carry generic constraints (`exclude_backend`,
 `preferred_backend`, `required_provider`, `required_runtime`) that name roles,
-never vendors. The `DecisionProposal` contract is `schema_version: 2`; v1
+never vendors. Constraints are requirements, not a selected route: Ictus
+normalizes versioned descriptor, health, quota and disablement facts, applies
+compatibility/preference policy and emits either a selected route, bounded
+no-route result, or approval requirement. The `DecisionProposal` contract is `schema_version: 2`; v1
 payloads (legacy `RETRY`) are accepted and normalized to `REEXECUTE`, and
 v2-only tokens are rejected under v1.
 
@@ -121,12 +124,23 @@ Conceptual shape:
   },
   "arguments": {},
   "policy_context": {},
+  "selected_route": {
+    "route": { "backend": "...", "provider": "...", "runtime": "...", "model": "..." },
+    "descriptor": { "fact_id": "...", "revision": 1 },
+    "health": { "fact_id": "...", "revision": 1 },
+    "quota": { "fact_id": "...", "revision": 1 },
+    "disablement": { "fact_id": "...", "revision": 1 }
+  },
   "requested_by": {
     "provider": "rules",
     "decision_id": "uuid"
   }
 }
 ```
+
+`selected_route` is present only when a `ROUTE` decision is executable. The
+fact references let Tactus reject stale admission without reranking; an
+execution adapter must not replace any identity component with a fallback.
 
 ---
 

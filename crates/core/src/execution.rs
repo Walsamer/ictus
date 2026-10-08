@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::evidence::EvidenceRef;
 use crate::observation::ObservationCategory;
+use crate::routing::SelectedRoute;
 use crate::snapshot::Subject;
 use crate::version::{ContractError, SCHEMA_VERSION};
 
@@ -39,6 +40,11 @@ pub struct ExecutionIntent {
     pub arguments: serde_json::Map<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub policy_context: serde_json::Map<String, serde_json::Value>,
+    /// The single route selected by Ictus, with the source fact revisions used
+    /// for admission. Execution adapters must reject stale facts rather than
+    /// silently substituting another backend, provider, runtime, or model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_route: Option<SelectedRoute>,
     pub requested_by: RequestedBy,
 }
 
@@ -56,6 +62,7 @@ impl ExecutionIntent {
             target,
             arguments: serde_json::Map::new(),
             policy_context: serde_json::Map::new(),
+            selected_route: None,
             requested_by,
         }
     }
@@ -70,6 +77,11 @@ impl ExecutionIntent {
         self
     }
 
+    pub fn with_selected_route(mut self, route: SelectedRoute) -> Self {
+        self.selected_route = Some(route);
+        self
+    }
+
     pub fn validate(&self) -> Result<(), ContractError> {
         ContractError::check_version(self.schema_version)?;
         ContractError::require_non_empty("intent_id", &self.intent_id)?;
@@ -81,6 +93,9 @@ impl ExecutionIntent {
             "requested_by.decision_id",
             &self.requested_by.decision_id,
         )?;
+        if let Some(route) = &self.selected_route {
+            route.validate()?;
+        }
         Ok(())
     }
 }

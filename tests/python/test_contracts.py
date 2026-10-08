@@ -52,6 +52,26 @@ def test_valid_payloads_pass_through_unchanged() -> None:
     assert validate_result(result) is result
 
 
+def test_selected_route_requires_identity_and_fact_revisions() -> None:
+    intent = _intent()
+    intent["selected_route"] = {
+        "route": {
+            "backend": "dagster",
+            "provider": "provider.a",
+            "runtime": "container",
+            "model": "model.a",
+        },
+        "descriptor": {"fact_id": "descriptor-1", "revision": 3},
+        "health": {"fact_id": "health-1", "revision": 4},
+        "quota": {"fact_id": "quota-1", "revision": 5},
+        "disablement": {"fact_id": "disablement-1", "revision": 6},
+    }
+    assert validate_intent(intent) is intent
+    intent["selected_route"]["health"]["revision"] = -1
+    with pytest.raises(ContractError, match="selected_route.health"):
+        validate_intent(intent)
+
+
 @pytest.mark.parametrize(
     "mutate, match",
     [

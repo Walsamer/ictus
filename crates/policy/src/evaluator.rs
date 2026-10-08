@@ -75,6 +75,16 @@ impl PolicyEvaluator for DefaultPolicyEvaluator {
             DecisionKind::Reexecute | DecisionKind::ExecuteCapability | DecisionKind::Route => {}
         }
 
+        // This legacy evaluator has no route facts or compatibility policy in
+        // its port signature. It must fail closed rather than forwarding route
+        // hints to an adapter. Call `select_route` and
+        // `LocalPolicyComposition::validate_with_route_selection` instead.
+        if proposal.decision == DecisionKind::Route {
+            return Ok(decision.with_reason(
+                "ROUTE requires a selected route from observed facts; constraints alone are not executable",
+            ));
+        }
+
         // 3. A capability-carrying decision must reference a known capability.
         // `proposal.validate()` above already guarantees a non-empty capability
         // for capability-requiring decisions, so there is no separate blank
@@ -265,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn route_is_allowed_and_carries_constraints_into_the_intent() {
+    fn route_without_observed_selection_is_denied() {
         use ictus_core::RouteConstraints;
         let evaluator = DefaultPolicyEvaluator::new();
         let proposal = proposal(DecisionKind::Route, Some("demo.verify")).with_route(
@@ -283,21 +293,8 @@ mod tests {
                 &crate::approval::AlwaysApproved,
             )
             .unwrap();
-        assert_eq!(decision.decision, PolicyDecisionKind::Allow);
-        let intent = decision.modified_intent.unwrap();
-        assert_eq!(
-            intent.policy_context["route"]["preferred_backend"],
-            "backend.b"
-        );
-        assert_eq!(
-            intent.policy_context["route"]["exclude_backend"],
-            "backend.a"
-        );
-        assert_eq!(
-            intent.policy_context["route"]["required_provider"],
-            "provider.c"
-        );
-        assert_eq!(intent.policy_context["route"]["required_runtime"], "wasm");
+        assert_eq!(decision.decision, PolicyDecisionKind::Deny);
+        assert!(decision.modified_intent.is_none());
     }
 
     #[test]
