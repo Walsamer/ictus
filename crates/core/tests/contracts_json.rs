@@ -170,6 +170,8 @@ const RECOVERY_CONTEXT_JSON: &str =
     include_str!("../../../examples/decision-context.recovery.json");
 const EXECUTABLE_ENVELOPE_JSON: &str =
     include_str!("../../../examples/decision-envelope.executable.json");
+const GRANTED_ENVELOPE_JSON: &str =
+    include_str!("../../../examples/decision-envelope.granted.json");
 const DENIED_ENVELOPE_JSON: &str = include_str!("../../../examples/decision-envelope.denied.json");
 const PENDING_ENVELOPE_JSON: &str =
     include_str!("../../../examples/decision-envelope.pending.json");
@@ -224,6 +226,16 @@ fn executable_envelope_fixture_binds_every_required_fact() {
     let intent = envelope.intent.as_ref().unwrap();
     assert_eq!(intent.capability, envelope.capability_validation.capability);
     assert_eq!(intent.target, envelope.subject);
+}
+
+#[test]
+fn granted_envelope_fixture_retains_bound_domain_grant_evidence() {
+    let envelope: DecisionEnvelope = serde_json::from_str(GRANTED_ENVELOPE_JSON).unwrap();
+    envelope.validate().unwrap();
+    assert!(envelope.is_executable());
+    assert_eq!(envelope.grants[0].grant_id, "grant-0001");
+    assert_eq!(envelope.grants[0].revision, envelope.snapshot.revision);
+    assert!(envelope.approvals[0].satisfied);
 }
 
 #[test]

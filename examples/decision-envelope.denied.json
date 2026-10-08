@@ -24,6 +24,13 @@
     "reason": "capability 'software.promote' is not permitted for this subject"
   },
   "approvals": [],
+  "grants": [],
+  "validation": {
+    "context_id": "ctx-initial-0001",
+    "proposal_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "capability_version": "1",
+    "validated_at": "2026-10-01T00:00:00Z"
+  },
   "outcome": "DENIED",
   "expiry": "2026-10-01T01:00:00Z"
 }

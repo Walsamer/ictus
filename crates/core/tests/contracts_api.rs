@@ -6,13 +6,13 @@
 
 use ictus_core::execution::ObservationSummary;
 use ictus_core::{
-    ApprovalBinding, AttemptBudget, Capability, CapabilityValidation, ContextKind, ContractError,
-    DecisionContext, DecisionEnvelope, DecisionKind, DecisionProposal, EnvelopeOutcome,
-    EvidenceRef, ExecutionIntent, ExecutionObservation, ExecutionResult, ExecutionStatus, Fact,
-    ObservationCategory, PolicyBinding, PolicyDecision, PolicyDecisionKind, ProposalBinding,
-    ProviderMetadata, ProviderType, RecoveryBinding, RequestedBy, RiskClass, RouteConstraints,
-    SnapshotRef, StateSnapshot, Subject, DECISION_SCHEMA_VERSION, LEGACY_DECISION_SCHEMA_VERSION,
-    SCHEMA_VERSION,
+    ApprovalBinding, ApprovalGrant, AttemptBudget, Capability, CapabilityValidation, ContextKind,
+    ContractError, DecisionContext, DecisionEnvelope, DecisionKind, DecisionProposal,
+    EnvelopeOutcome, EvidenceRef, ExecutionIntent, ExecutionObservation, ExecutionResult,
+    ExecutionStatus, Fact, ObservationCategory, PolicyBinding, PolicyDecision, PolicyDecisionKind,
+    ProposalBinding, ProviderMetadata, ProviderType, RecoveryBinding, RequestedBy, RiskClass,
+    RouteConstraints, SnapshotRef, StateSnapshot, Subject, ValidationBinding,
+    DECISION_SCHEMA_VERSION, LEGACY_DECISION_SCHEMA_VERSION, SCHEMA_VERSION,
 };
 
 fn subject() -> Subject {
@@ -624,6 +624,10 @@ fn make_intent() -> ExecutionIntent {
         subject(),
         RequestedBy::new("rules", "p1"),
     )
+    .with_policy_context(
+        "proposal_digest",
+        serde_json::json!("0000000000000000000000000000000000000000000000000000000000000000"),
+    )
 }
 
 fn make_envelope() -> DecisionEnvelope {
@@ -637,6 +641,13 @@ fn make_envelope() -> DecisionEnvelope {
         capability_validation: CapabilityValidation::new("demo.verify", true, true, "admitted"),
         route: None,
         approvals: Vec::new(),
+        grants: Vec::new(),
+        validation: ValidationBinding::new(
+            "ctx-1",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            "1",
+            "2026-10-01T00:00:00Z",
+        ),
         outcome: EnvelopeOutcome::Executable,
         expiry: "2026-10-01T01:00:00Z".to_string(),
         intent: None,
@@ -795,6 +806,19 @@ fn envelope_builders_and_validation() {
     let envelope = make_envelope()
         .with_route(RouteConstraints::new().with_preferred_backend("backend.b"))
         .with_approval(ApprovalBinding::new("human.promote", true))
+        .with_grant(
+            ApprovalGrant::new(
+                "grant-1",
+                "human.promote",
+                subject(),
+                2,
+                "demo.verify",
+                "0.1.0",
+                "2026-09-30T00:00:00Z",
+                "2026-10-02T00:00:00Z",
+            )
+            .with_evidence(EvidenceRef::new("approval_record", "domain://grant-1")),
+        )
         .with_intent(make_intent());
     envelope.validate().unwrap();
     assert!(envelope.is_executable());

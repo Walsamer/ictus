@@ -312,6 +312,10 @@ prop_compose! {
             capability.clone(),
             subject.clone(),
             RequestedBy::new("rules", "p1"),
+        )
+        .with_policy_context(
+            "proposal_digest",
+            serde_json::json!("0000000000000000000000000000000000000000000000000000000000000000"),
         );
         DecisionEnvelope {
             schema_version: 1,
@@ -328,6 +332,13 @@ prop_compose! {
             ),
             route: None,
             approvals: Vec::new(),
+            grants: Vec::new(),
+            validation: ictus_core::ValidationBinding::new(
+                "ctx-1",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                "1",
+                "2026-10-01T00:00:00Z",
+            ),
             outcome: EnvelopeOutcome::Executable,
             expiry: "2026-10-01T01:00:00Z".to_string(),
             intent: Some(intent),

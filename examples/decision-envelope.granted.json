@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "envelope_id": "env-granted-0001",
+  "subject": { "type": "task", "id": "task-123" },
+  "snapshot": {
+    "snapshot_id": "snap-0002",
+    "revision": 2,
+    "digest": "076888ef4c18be7d2dd664fc6b0ceefc0561cc2b558076973b62a2a086751b5b"
+  },
+  "proposal": {
+    "proposal_id": "proposal-granted-0001",
+    "schema_version": 2,
+    "decision": "EXECUTE_CAPABILITY"
+  },
+  "policy": {
+    "policy_decision_id": "policy:proposal-granted-0001",
+    "policy_version": "ictus.default.v1",
+    "verdict": "ALLOW"
+  },
+  "capability_validation": {
+    "capability": "software.promote",
+    "admitted": true,
+    "permitted": true,
+    "reason": "capability admitted with a bound human approval grant"
+  },
+  "approvals": [{ "name": "human.promote", "satisfied": true }],
+  "grants": [{
+    "grant_id": "grant-0001",
+    "approval": "human.promote",
+    "subject": { "type": "task", "id": "task-123" },
+    "revision": 2,
+    "capability": "software.promote",
+    "policy_version": "ictus.default.v1",
+    "issued_at": "2026-09-30T00:00:00Z",
+    "expires_at": "2026-10-02T00:00:00Z",
+    "revoked": false,
+    "evidence": [{ "kind": "approval_record", "uri": "tactus://approvals/grant-0001" }]
+  }],
+  "validation": {
+    "context_id": "ctx-recovery-0001",
+    "proposal_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "capability_version": "3",
+    "validated_at": "2026-10-01T00:00:00Z"
+  },
+  "outcome": "EXECUTABLE",
+  "expiry": "2026-10-01T01:00:00Z",
+  "intent": {
+    "schema_version": 1,
+    "intent_id": "intent:proposal-granted-0001",
+    "capability": "software.promote",
+    "target": { "type": "task", "id": "task-123" },
+    "arguments": {},
+    "policy_context": { "proposal_digest": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "requested_by": { "provider": "rules.v1", "decision_id": "proposal-granted-0001" }
+  }
+}
