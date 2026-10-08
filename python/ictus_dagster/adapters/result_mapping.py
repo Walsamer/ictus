@@ -45,6 +45,7 @@ def execution_result_from_run(
     execution_id: str,
     intent_id: str,
     success: bool,
+    run_status: str | None = None,
     failed_step: str | None = None,
     failure_category: str | None = None,
     started_at: str | None = None,
@@ -52,10 +53,20 @@ def execution_result_from_run(
     evidence: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a validated ExecutionResult payload from raw run facts."""
-    status = "succeeded" if success else "failed"
-    if success:
+    normalized_status = (run_status or "").upper()
+    if success or normalized_status == "SUCCESS":
+        status = "succeeded"
         category = "SUCCESS"
+    elif normalized_status in {"CANCELED", "CANCELING"}:
+        # Cancellation is a known terminal *status*.  The generic observation
+        # vocabulary has no cancellation category, so do not invent one.
+        status = "cancelled"
+        category = "UNKNOWN"
+    elif normalized_status == "TIMED_OUT":
+        status = "timed_out"
+        category = failure_category or "WORKER_TIMEOUT"
     else:
+        status = "failed"
         category = failure_category or _category_for_failed_step(failed_step)
 
     payload: dict[str, Any] = {

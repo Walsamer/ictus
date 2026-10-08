@@ -16,6 +16,7 @@ pub mod composition;
 pub mod evaluator;
 pub mod intent;
 pub mod registry;
+pub mod routing;
 pub mod rules;
 pub mod validation;
 
@@ -25,7 +26,11 @@ pub use composition::{
     DEFAULT_POLICY_VERSION,
 };
 pub use evaluator::DefaultPolicyEvaluator;
-pub use intent::build_execution_intent;
+pub use intent::{build_execution_intent, build_routed_execution_intent};
 pub use registry::InMemoryCapabilityRegistry;
+pub use routing::{
+    select_route, NoRoute, NoRouteReason, RouteApproval, RouteSelection, RoutingPolicy,
+    UncertainFactPolicy,
+};
 pub use rules::RuleDecisionProvider;
 pub use validation::{validate_capability, validate_proposal};

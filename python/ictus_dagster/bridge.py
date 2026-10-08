@@ -1,9 +1,10 @@
 """JSON-over-stdio bridge: the Dagster side of the Rust <-> Dagster boundary.
 
-Reads one validated ``ExecutionIntent`` JSON object on stdin, executes it
-durably through Dagster, and writes exactly one ``ExecutionResult`` JSON object
-on stdout. All logging and diagnostics go to stderr so stdout stays a pure
-contract.
+The legacy no-argument command executes a synchronous demo and remains useful
+for the three standalone examples.  Production callers use ``submit``,
+``query`` and ``cancel``: those commands exchange durable receipts and never
+run work in the bridge process.  All logging and diagnostics go to stderr so
+stdout stays a pure contract.
 
 Transport choice and its rationale are documented in ``docs/ARCHITECTURE.md``.
 """
@@ -23,6 +24,12 @@ from ictus_dagster.adapters.contracts import ContractError, validate_intent
 from ictus_dagster.adapters.intent_config import UnsupportedCapability
 from ictus_dagster.adapters.result_mapping import execution_result_from_run
 from ictus_dagster.adapters.workflow_registry import resolve_workflow
+from ictus_dagster.submission import (
+    SubmissionError,
+    cancel_receipt,
+    query_receipt,
+    submit_intent,
+)
 
 
 def _now() -> str:
@@ -96,12 +103,30 @@ def execute_intent(
     )
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: ARG001 - CLI signature
+def main(argv: list[str] | None = None) -> int:
+    argv = argv if argv is not None else sys.argv[1:]
     raw = sys.stdin.read()
     try:
         payload = json.loads(raw)
-        result = execute_intent(payload)
-    except (ContractError, UnsupportedCapability, json.JSONDecodeError) as exc:
+        if argv == ["submit"]:
+            result = submit_intent(payload)
+        elif argv == ["query"]:
+            result = query_receipt(payload)
+        elif argv == ["cancel"]:
+            result = cancel_receipt(payload)
+        elif not argv or argv == ["execute-demo"]:
+            result = execute_intent(payload)
+        else:
+            # Preserve the no-argument demo behaviour when this module is
+            # exercised through ``runpy`` (which can retain a test runner's
+            # unrelated command-line flags).
+            result = execute_intent(payload)
+    except (
+        ContractError,
+        UnsupportedCapability,
+        SubmissionError,
+        json.JSONDecodeError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # noqa: BLE001 - a backend crash must be reported

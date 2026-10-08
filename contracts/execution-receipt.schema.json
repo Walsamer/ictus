@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ictus.dev/contracts/execution-receipt.schema.json",
+  "title": "ExecutionReceipt",
+  "description": "Durable acknowledgement of one immutable ExecutionIntent submitted to a backend.",
+  "type": "object",
+  "required": ["schema_version", "receipt_id", "execution_id", "intent_id", "intent_digest", "status", "submitted_at", "evidence"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "intent_id": { "type": "string", "minLength": 1 },
+    "intent_digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "status": { "type": "string", "minLength": 1 },
+    "submitted_at": { "type": "string", "format": "date-time" },
+    "evidence": { "type": "array", "items": { "$ref": "execution-result.schema.json#/$defs/evidence" } }
+  },
+  "additionalProperties": false
+}

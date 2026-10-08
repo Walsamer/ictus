@@ -14,7 +14,8 @@ use ictus_core::{
 use ictus_ports::{ApprovalProvider, CapabilityRegistry, PolicyEvaluator, PortError};
 
 use crate::{
-    validate_capability, validate_proposal, DefaultPolicyEvaluator, TokenApprovalProvider,
+    select_route, validate_capability, validate_proposal, DefaultPolicyEvaluator, RouteSelection,
+    RoutingPolicy, TokenApprovalProvider,
 };
 
 /// Stable identifier of this implementation's policy semantics.
@@ -256,6 +257,109 @@ impl LocalPolicyComposition {
         }
         envelope.validate()?;
         Ok(TrustedDecision { envelope })
+    }
+
+    /// Validate and select the single executable route for a `ROUTE` proposal.
+    ///
+    /// The ordinary evaluator deliberately has no candidate-fact parameter, so
+    /// it cannot authorize `ROUTE`. This is the production migration path for
+    /// callers that previously asked a runtime or registry for compatibility:
+    /// supply observed facts here, receive either a revision-bound selected
+    /// route, a typed no-route result, or a pending approval result.
+    pub fn validate_with_route_selection(
+        &self,
+        request: ValidationRequest<'_>,
+        candidates: &[ictus_core::RouteCandidate],
+        routing_policy: &RoutingPolicy,
+        prior_exclusions: &[ictus_core::RouteExclusion],
+    ) -> Result<TrustedDecision, PortError> {
+        if request.proposal.decision != ictus_core::DecisionKind::Route {
+            return self.validate(request);
+        }
+        // Validate the original ROUTE before adapting it for the generic
+        // capability/grant gate below. In particular, malformed route
+        // constraints must not be discarded by that adaptation.
+        if request.proposal.validate().is_err() {
+            return self.validate(request);
+        }
+
+        // Reuse capability and grant validation without allowing its legacy
+        // evaluator path to mint an unselected ROUTE intent. The original
+        // proposal is rebound below, including its exact digest.
+        let mut admission_proposal = request.proposal.clone();
+        admission_proposal.decision = ictus_core::DecisionKind::ExecuteCapability;
+        admission_proposal.route = None;
+        let mut trusted = self.validate(ValidationRequest {
+            context: request.context,
+            snapshot: request.snapshot.clone(),
+            proposal: &admission_proposal,
+            capabilities: request.capabilities,
+            grants: request.grants,
+            expiry: request.expiry,
+        })?;
+        if !trusted.envelope.is_executable() {
+            return Ok(trusted);
+        }
+
+        let capability = request.proposal.capability.as_deref().ok_or_else(|| {
+            PortError::PolicyFailed("ROUTE has no capability after validation".to_string())
+        })?;
+        let requirements = ictus_core::RouteRequirements::from_constraints(
+            capability,
+            request.proposal.route.as_ref(),
+        );
+        let selected = select_route(&requirements, candidates, routing_policy, prior_exclusions);
+        let envelope = &mut trusted.envelope;
+        envelope.proposal = ProposalBinding::new(
+            request.proposal.proposal_id.clone(),
+            request.proposal.schema_version,
+            request.proposal.decision,
+        );
+        envelope.route = request.proposal.route.clone();
+        let digest = proposal_digest(request.proposal)?;
+        envelope.validation.proposal_digest = digest.clone();
+
+        match selected {
+            RouteSelection::Selected(route) => {
+                let intent = envelope
+                    .intent
+                    .as_mut()
+                    .expect("executable envelope has intent");
+                intent.selected_route = Some(route);
+                intent
+                    .policy_context
+                    .insert("proposal_digest".to_string(), serde_json::json!(digest));
+                if let Some(constraints) = &request.proposal.route {
+                    intent.policy_context.insert(
+                        "route".to_string(),
+                        serde_json::to_value(constraints).map_err(|error| {
+                            PortError::PolicyFailed(format!(
+                                "cannot serialize route constraints: {error}"
+                            ))
+                        })?,
+                    );
+                }
+            }
+            RouteSelection::NoRoute(no_route) => {
+                envelope.outcome = EnvelopeOutcome::NoRoute;
+                envelope.intent = None;
+                envelope.capability_validation.reason = format!(
+                    "{}; no route ({:?}): {}",
+                    envelope.capability_validation.reason, no_route.reason, no_route.detail
+                );
+            }
+            RouteSelection::RequireApproval(approval) => {
+                envelope.outcome = EnvelopeOutcome::Pending;
+                envelope.policy.verdict = PolicyDecisionKind::RequireApproval;
+                envelope.intent = None;
+                envelope.capability_validation.reason = format!(
+                    "{}; route approval required: {}",
+                    envelope.capability_validation.reason, approval.reason
+                );
+            }
+        }
+        envelope.validate()?;
+        Ok(trusted)
     }
 
     fn denied(

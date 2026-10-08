@@ -1,0 +1,17 @@
+# Copy this file into the directory named by DAGSTER_HOME before using
+# `ictus_dagster.bridge submit`.  SQLite persists receipts and run/event state;
+# QueuedRunCoordinator enforces the configured concurrency in a separately
+# launched `dagster-daemon run` worker.
+storage:
+  sqlite:
+    base_dir: ./storage
+run_launcher:
+  module: dagster
+  class: DefaultRunLauncher
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 2
+telemetry:
+  enabled: false

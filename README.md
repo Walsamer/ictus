@@ -163,6 +163,25 @@ changing the domain contracts. Rationale: [`docs/DECISIONS.md`](docs/DECISIONS.m
 echo '<ExecutionIntent JSON>' | uv run --frozen python -m ictus_dagster.bridge
 ```
 
+### Durable submission
+
+The no-argument bridge command remains a synchronous demo.  Production uses a
+persistent Dagster instance, an independently started daemon and the
+receipt/query boundary.  Copy
+[`examples/dagster/dagster.yaml`](examples/dagster/dagster.yaml) into
+`$DAGSTER_HOME` (it configures SQLite persistence and a concurrency limit of
+two), then start `uv run --frozen dagster-daemon run` in another process.
+
+```bash
+echo '<ExecutionIntent JSON>' | uv run --frozen python -m ictus_dagster.bridge submit
+echo '<receipt JSON>' | uv run --frozen python -m ictus_dagster.bridge query
+```
+
+Repeated submission of the same `intent_id` and immutable content returns its
+original receipt.  A changed payload for that identity fails closed; a caller
+that missed the first acknowledgement reconciles by submitting or querying the
+same identity rather than creating another run.
+
 ## Architecture Baseline v1 and status
 
 Read [Ictus scope](docs/architecture/BASELINE_V1.md) and the

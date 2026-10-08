@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::evidence::EvidenceRef;
 use crate::observation::ObservationCategory;
+use crate::routing::SelectedRoute;
 use crate::snapshot::Subject;
 use crate::version::{ContractError, SCHEMA_VERSION};
 
@@ -39,6 +40,11 @@ pub struct ExecutionIntent {
     pub arguments: serde_json::Map<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub policy_context: serde_json::Map<String, serde_json::Value>,
+    /// The single route selected by Ictus, with the source fact revisions used
+    /// for admission. Execution adapters must reject stale facts rather than
+    /// silently substituting another backend, provider, runtime, or model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_route: Option<SelectedRoute>,
     pub requested_by: RequestedBy,
 }
 
@@ -56,6 +62,7 @@ impl ExecutionIntent {
             target,
             arguments: serde_json::Map::new(),
             policy_context: serde_json::Map::new(),
+            selected_route: None,
             requested_by,
         }
     }
@@ -70,6 +77,11 @@ impl ExecutionIntent {
         self
     }
 
+    pub fn with_selected_route(mut self, route: SelectedRoute) -> Self {
+        self.selected_route = Some(route);
+        self
+    }
+
     pub fn validate(&self) -> Result<(), ContractError> {
         ContractError::check_version(self.schema_version)?;
         ContractError::require_non_empty("intent_id", &self.intent_id)?;
@@ -81,6 +93,9 @@ impl ExecutionIntent {
             "requested_by.decision_id",
             &self.requested_by.decision_id,
         )?;
+        if let Some(route) = &self.selected_route {
+            route.validate()?;
+        }
         Ok(())
     }
 }
@@ -118,6 +133,73 @@ pub struct ExecutionResult {
     pub started_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<String>,
+}
+
+/// Durable acknowledgement of a submitted semantic execution attempt.
+///
+/// `receipt_id` is transport-owned (the Dagster run id for the local adapter),
+/// whereas `intent_id` and `intent_digest` bind the receipt to immutable Ictus
+/// input. The digest makes replays safe: the same identity may be reconciled,
+/// but it may never silently mean different work.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionReceipt {
+    pub schema_version: u32,
+    pub receipt_id: String,
+    pub execution_id: String,
+    pub intent_id: String,
+    pub intent_digest: String,
+    pub status: String,
+    pub submitted_at: String,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+}
+
+impl ExecutionReceipt {
+    pub fn new(
+        receipt_id: impl Into<String>,
+        execution_id: impl Into<String>,
+        intent_id: impl Into<String>,
+        intent_digest: impl Into<String>,
+        status: impl Into<String>,
+        submitted_at: impl Into<String>,
+    ) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            receipt_id: receipt_id.into(),
+            execution_id: execution_id.into(),
+            intent_id: intent_id.into(),
+            intent_digest: intent_digest.into(),
+            status: status.into(),
+            submitted_at: submitted_at.into(),
+            evidence: Vec::new(),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), ContractError> {
+        ContractError::check_version(self.schema_version)?;
+        for (name, value) in [
+            ("receipt_id", &self.receipt_id),
+            ("execution_id", &self.execution_id),
+            ("intent_id", &self.intent_id),
+            ("intent_digest", &self.intent_digest),
+            ("status", &self.status),
+            ("submitted_at", &self.submitted_at),
+        ] {
+            ContractError::require_non_empty(name, value)?;
+        }
+        if self.intent_digest.len() != 64
+            || !self
+                .intent_digest
+                .chars()
+                .all(|character| character.is_ascii_hexdigit())
+        {
+            return Err(ContractError::InvalidValue {
+                field: "intent_digest",
+                reason: "must be a SHA-256 hex digest".into(),
+            });
+        }
+        Ok(())
+    }
 }
 
 impl ExecutionResult {
