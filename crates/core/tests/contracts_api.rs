@@ -307,6 +307,22 @@ fn route_constraints_are_generic_and_round_trip() {
 }
 
 #[test]
+fn route_constraints_with_a_single_field_are_not_empty() {
+    // Each present field alone must make the constraints non-empty; a mutant
+    // that weakens any `&&` to `||` in `is_empty` reports empty and is killed.
+    assert!(!RouteConstraints::new().with_exclude_backend("b").is_empty());
+    assert!(!RouteConstraints::new()
+        .with_preferred_backend("b")
+        .is_empty());
+    assert!(!RouteConstraints::new()
+        .with_required_provider("p")
+        .is_empty());
+    assert!(!RouteConstraints::new()
+        .with_required_runtime("r")
+        .is_empty());
+}
+
+#[test]
 fn route_constraints_on_a_non_route_decision_are_rejected() {
     let proposal = make_proposal(DecisionKind::ExecuteCapability)
         .with_capability("demo.verify")
@@ -681,6 +697,7 @@ fn decision_context_recovery_binds_the_failure() {
         make_recovery(),
     );
     assert_eq!(context.kind, ContextKind::Recovery);
+    assert!(!context.is_initial());
     assert!(context.recovery_binding().is_some());
     context.validate().unwrap();
 }
@@ -787,6 +804,7 @@ fn envelope_builders_and_validation() {
 
 #[test]
 fn envelope_rejects_executable_without_intent() {
+    assert!(!make_envelope().is_executable());
     assert!(make_envelope().validate().is_err());
 }
 
