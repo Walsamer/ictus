@@ -218,6 +218,8 @@ Conceptual shape:
   "capability_validation": { "capability": "demo.verify", "admitted": true, "permitted": true, "reason": "..." },
   "route": null,
   "approvals": [],
+  "grants": [],
+  "validation": { "context_id": "uuid", "proposal_digest": "sha256", "capability_version": "1", "validated_at": "..." },
   "outcome": "EXECUTABLE",
   "expiry": "2026-10-01T19:00:00Z",
   "intent": { "...": "an ExecutionIntent" }
@@ -242,6 +244,17 @@ Binding rules:
 - A `MODIFY` proposal is revalidated (`PolicyDecision::revalidate_modified`)
   before its modified intent is executed: the modified intent must itself pass
   full validation.
+- Production approval evidence is a bounded `ApprovalGrant`: it names one
+  approval, subject, subject revision, capability, policy version, issue and
+  expiry timestamps, revocation state, and at least one opaque domain evidence
+  reference. Wildcard/demo tokens are not grants. A satisfied approval in an
+  executable envelope must have a matching non-revoked bound grant.
+- `validation.proposal_digest` binds the exact serialized candidate payload and
+  must also be present in the executable intent's policy context. A changed
+  payload therefore requires a fresh validation result.
+- The `TrustedDecision` wrapper is the in-process authority boundary. Its JSON
+  envelope is portable audit data; parsing or manually constructing an `ALLOW`
+  envelope does not recreate the wrapper accepted by local execution code.
 
 The vocabulary in the envelope stays generic. The decision kinds carried by
 `proposal.decision` are exactly the six frozen tokens (including `REEXECUTE`,

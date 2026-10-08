@@ -30,9 +30,14 @@ The [contract specification](https://github.com/Walsamer/tactus/blob/main/docs/a
 snapshot/revision, policy/capability verdict, approvals and effect binding.
 
 Ictus produces approval requirements; the domain records/resolves grants and
-Ictus checks their sufficiency. No permissive `--approve` demo shortcut may become
-a production approval grant. Denied/pending/invalid decisions have no executable
-intent. A no-route result is typed and bounded; adapters cannot choose a fallback.
+Ictus checks their sufficiency. Production grants are bounded evidence records
+binding approval name, subject, revision, capability, policy version, validity
+window and domain evidence. No permissive `--approve`, wildcard or file-token
+demo shortcut may become a production approval grant. The trusted local policy
+composition returns the opaque `TrustedDecision`; serialized envelopes are audit
+records, not authority to recreate that token. Denied/pending/invalid decisions
+have no executable intent. A no-route result is typed and bounded; adapters
+cannot choose a fallback.
 
 REEXECUTE is semantic authorization for another domain attempt. Dagster step retry
 is an execution mechanism within an existing attempt. Ictus does not persist a

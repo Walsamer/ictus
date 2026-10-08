@@ -20,6 +20,7 @@ pub mod decision;
 pub mod envelope;
 pub mod evidence;
 pub mod execution;
+pub mod grant;
 pub mod observation;
 pub mod policy;
 pub mod snapshot;
@@ -34,10 +35,11 @@ pub use decision::{
 };
 pub use envelope::{
     ApprovalBinding, CapabilityValidation, DecisionEnvelope, EnvelopeOutcome, PolicyBinding,
-    ProposalBinding,
+    ProposalBinding, ValidationBinding,
 };
 pub use evidence::EvidenceRef;
 pub use execution::{ExecutionIntent, ExecutionResult, ExecutionStatus, RequestedBy};
+pub use grant::ApprovalGrant;
 pub use observation::{ExecutionObservation, ObservationCategory};
 pub use policy::{PolicyDecision, PolicyDecisionKind};
 pub use snapshot::{Fact, StateSnapshot, Subject};

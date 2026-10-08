@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::context::SnapshotRef;
 use crate::decision::{DecisionKind, RouteConstraints};
 use crate::execution::ExecutionIntent;
+use crate::grant::ApprovalGrant;
 use crate::policy::PolicyDecisionKind;
 use crate::snapshot::Subject;
 use crate::version::{check_contract_version, ContractError, ENVELOPE_SCHEMA_VERSION};
@@ -145,6 +146,58 @@ pub struct ApprovalBinding {
     pub satisfied: bool,
 }
 
+/// Evidence that binds an envelope to the exact input evaluated locally.
+///
+/// The proposal digest is calculated from the canonical serialized proposal.
+/// It prevents a consumer from treating an intent for a changed payload as the
+/// result of the earlier validation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ValidationBinding {
+    pub context_id: String,
+    pub proposal_digest: String,
+    pub capability_version: String,
+    pub validated_at: String,
+}
+
+impl ValidationBinding {
+    pub fn new(
+        context_id: impl Into<String>,
+        proposal_digest: impl Into<String>,
+        capability_version: impl Into<String>,
+        validated_at: impl Into<String>,
+    ) -> Self {
+        Self {
+            context_id: context_id.into(),
+            proposal_digest: proposal_digest.into(),
+            capability_version: capability_version.into(),
+            validated_at: validated_at.into(),
+        }
+    }
+
+    fn validate(&self) -> Result<(), ContractError> {
+        for (field, value) in [
+            ("validation.context_id", &self.context_id),
+            ("validation.proposal_digest", &self.proposal_digest),
+            ("validation.capability_version", &self.capability_version),
+            ("validation.validated_at", &self.validated_at),
+        ] {
+            ContractError::require_non_empty(field, value)?;
+        }
+        if self.proposal_digest.len() != 64
+            || !self
+                .proposal_digest
+                .chars()
+                .all(|character| character.is_ascii_hexdigit())
+        {
+            return Err(ContractError::InvalidValue {
+                field: "validation.proposal_digest",
+                reason: "must be a SHA-256 hex digest".to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
 impl ApprovalBinding {
     pub fn new(name: impl Into<String>, satisfied: bool) -> Self {
         Self {
@@ -169,6 +222,12 @@ pub struct DecisionEnvelope {
     pub route: Option<RouteConstraints>,
     #[serde(default)]
     pub approvals: Vec<ApprovalBinding>,
+    /// Domain grant records that satisfied approval requirements. These are
+    /// evidence, not an approval database owned by Ictus.
+    #[serde(default)]
+    pub grants: Vec<ApprovalGrant>,
+    /// Binding evidence emitted by the trusted local composition boundary.
+    pub validation: ValidationBinding,
     pub outcome: EnvelopeOutcome,
     /// RFC 3339 timestamp after which the envelope is no longer valid.
     pub expiry: String,
@@ -185,6 +244,11 @@ impl DecisionEnvelope {
 
     pub fn with_approval(mut self, approval: ApprovalBinding) -> Self {
         self.approvals.push(approval);
+        self
+    }
+
+    pub fn with_grant(mut self, grant: ApprovalGrant) -> Self {
+        self.grants.push(grant);
         self
     }
 
@@ -231,6 +295,10 @@ impl DecisionEnvelope {
         for approval in &self.approvals {
             ContractError::require_non_empty("approvals.name", &approval.name)?;
         }
+        for grant in &self.grants {
+            grant.validate()?;
+        }
+        self.validation.validate()?;
 
         match self.outcome {
             EnvelopeOutcome::Executable => {
@@ -263,6 +331,35 @@ impl DecisionEnvelope {
                         field: "intent.target",
                         reason: "intent target does not bind the envelope subject".to_string(),
                     });
+                }
+                let bound_digest = intent
+                    .policy_context
+                    .get("proposal_digest")
+                    .and_then(serde_json::Value::as_str);
+                if bound_digest != Some(self.validation.proposal_digest.as_str()) {
+                    return Err(ContractError::InvalidValue {
+                        field: "intent.policy_context.proposal_digest",
+                        reason: "intent does not bind the validated proposal payload".to_string(),
+                    });
+                }
+                for approval in self.approvals.iter().filter(|approval| approval.satisfied) {
+                    let has_bound_grant = self.grants.iter().any(|grant| {
+                        !grant.revoked
+                            && grant.approval == approval.name
+                            && grant.subject == self.subject
+                            && grant.revision == self.snapshot.revision
+                            && grant.capability == self.capability_validation.capability
+                            && grant.policy_version == self.policy.policy_version
+                    });
+                    if !has_bound_grant {
+                        return Err(ContractError::InvalidValue {
+                            field: "approvals",
+                            reason: format!(
+                                "satisfied approval '{}' has no matching bound grant",
+                                approval.name
+                            ),
+                        });
+                    }
                 }
             }
             EnvelopeOutcome::Denied
