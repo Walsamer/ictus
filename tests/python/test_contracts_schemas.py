@@ -13,6 +13,11 @@ import pytest
 from jsonschema import Draft202012Validator, ValidationError
 from referencing import Registry, Resource
 
+from ictus_dagster.adapters.contracts import (
+    ContractError,
+    validate_intent,
+    validate_receipt,
+)
 from conftest import CONTRACTS_DIR, EXAMPLES_DIR
 
 SCHEMA_EXAMPLE_PAIRS = [
@@ -21,6 +26,7 @@ SCHEMA_EXAMPLE_PAIRS = [
     ("proposal.schema.json", "decision-proposal.retry.json"),
     ("policy-decision.schema.json", "policy-decision.allow.json"),
     ("execution-intent.schema.json", "execution-intent.demo-verify.json"),
+    ("execution-receipt.schema.json", "execution-receipt.demo-verify.json"),
     ("execution-result.schema.json", "execution-result.demo-verify.json"),
     ("decision-context.schema.json", "decision-context.initial.json"),
     ("decision-context.schema.json", "decision-context.recovery.json"),
@@ -273,3 +279,71 @@ def test_no_route_envelope_uses_generic_route_constraints() -> None:
     payload["route"] = {"preferred_backend": ""}
     with pytest.raises(ValidationError):
         _validator("decision-envelope.schema.json").validate(payload)
+
+
+# -- runtime receipt/route validation ---------------------------------------
+
+
+def _selected_route() -> dict:
+    return {
+        "route": {
+            "backend": "dagster",
+            "provider": "provider.a",
+            "runtime": "process",
+            "model": "model.a",
+        },
+        "descriptor": {"fact_id": "descriptor-1", "revision": 1},
+        "health": {"fact_id": "health-1", "revision": 1},
+        "quota": {"fact_id": "quota-1", "revision": 1},
+        "disablement": {"fact_id": "disablement-1", "revision": 1},
+    }
+
+
+def test_runtime_route_validation_rejects_malformed_bindings() -> None:
+    intent = _example("execution-intent.demo-verify.json")
+    intent["selected_route"] = "not-an-object"
+    with pytest.raises(ContractError, match="selected_route must be"):
+        validate_intent(intent)
+
+    intent["selected_route"] = _selected_route()
+    intent["selected_route"]["route"]["backend"] = " "
+    with pytest.raises(ContractError, match="backend.*non-empty"):
+        validate_intent(intent)
+
+    intent["selected_route"] = _selected_route()
+    intent["selected_route"]["descriptor"]["fact_id"] = ""
+    with pytest.raises(ContractError, match="selected_route.descriptor"):
+        validate_intent(intent)
+
+
+def _receipt() -> dict:
+    return {
+        "schema_version": 1,
+        "receipt_id": "run-1",
+        "execution_id": "run-1",
+        "intent_id": "intent-1",
+        "intent_digest": "a" * 64,
+        "status": "not_started",
+        "submitted_at": "2026-10-08T00:00:00Z",
+        "evidence": [{"kind": "dagster_run", "uri": "dagster://runs/run-1"}],
+    }
+
+
+def test_runtime_receipt_validation_accepts_a_complete_receipt() -> None:
+    receipt = _receipt()
+    assert validate_receipt(receipt) is receipt
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        ([], "must be a JSON object"),
+        ({**_receipt(), "schema_version": 2}, "unsupported schema_version"),
+        ({**_receipt(), "receipt_id": " "}, "receipt_id must be non-empty"),
+        ({**_receipt(), "intent_digest": "not-a-digest"}, "SHA-256"),
+        ({**_receipt(), "evidence": []}, "durable evidence"),
+    ],
+)
+def test_runtime_receipt_validation_rejects_malformed_receipts(payload, match) -> None:
+    with pytest.raises(ContractError, match=match):
+        validate_receipt(payload)

@@ -19,7 +19,7 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use ictus_core::{ExecutionIntent, ExecutionResult};
+use ictus_core::{ExecutionIntent, ExecutionReceipt, ExecutionResult};
 use ictus_ports::{ExecutionBackend, PortError};
 
 /// An `ExecutionBackend` that sends one `ExecutionIntent` as JSON on the child
@@ -80,6 +80,50 @@ impl JsonStdioBackend {
     /// The program arguments.
     pub fn args(&self) -> &[String] {
         &self.args
+    }
+
+    /// Submit to the receipt-based production boundary without waiting for a
+    /// terminal result. The adapter rejects ephemeral Dagster storage.
+    pub fn submit(&self, intent: &ExecutionIntent) -> Result<ExecutionReceipt, PortError> {
+        intent.validate()?;
+        let payload =
+            serde_json::to_vec(intent).map_err(|e| PortError::Serialization(e.to_string()))?;
+        let mut child = Command::new(&self.program)
+            .args(&self.args)
+            .arg("submit")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                PortError::ExecutionFailed(format!(
+                    "could not spawn execution backend '{}': {e}",
+                    self.program
+                ))
+            })?;
+        child
+            .stdin
+            .take()
+            .ok_or_else(|| PortError::ExecutionFailed("backend stdin unavailable".into()))?
+            .write_all(&payload)
+            .map_err(|e| PortError::ExecutionFailed(format!("writing intent failed: {e}")))?;
+        let output = child
+            .wait_with_output()
+            .map_err(|e| PortError::ExecutionFailed(format!("backend wait failed: {e}")))?;
+        if !output.status.success() {
+            return Err(PortError::ExecutionFailed(format!(
+                "backend submit exited with {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        let receipt: ExecutionReceipt = serde_json::from_slice(&output.stdout).map_err(|e| {
+            PortError::Serialization(format!(
+                "backend returned invalid ExecutionReceipt JSON: {e}"
+            ))
+        })?;
+        receipt.validate()?;
+        Ok(receipt)
     }
 }
 

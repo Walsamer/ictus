@@ -47,6 +47,7 @@ class WorkflowSpec:
 
     capability: str
     job: JobDefinition
+    job_factory: Callable[[], JobDefinition]
     resource_key: str
     resource_cls: type
     settings_from_arguments: SettingsMapper
@@ -58,6 +59,27 @@ JOBS: dict[str, JobDefinition] = {
     "capability_execution_job": capability_execution_job,
     "data_quality_job": data_quality_job,
     "system_diagnostic_job": system_diagnostic_job,
+}
+
+# ``reconstructable`` requires the module-level factory that produced a job,
+# not an already materialized JobDefinition.  Keeping this alongside JOBS lets
+# the durable launcher reconstruct the same graph in its independent worker.
+def capability_execution_job_factory() -> JobDefinition:
+    return capability_execution_job
+
+
+def data_quality_job_factory() -> JobDefinition:
+    return data_quality_job
+
+
+def system_diagnostic_job_factory() -> JobDefinition:
+    return system_diagnostic_job
+
+
+JOB_FACTORIES: dict[str, Callable[[], JobDefinition]] = {
+    "capability_execution_job": capability_execution_job_factory,
+    "data_quality_job": data_quality_job_factory,
+    "system_diagnostic_job": system_diagnostic_job_factory,
 }
 
 RESOURCES: dict[str, type] = {
@@ -120,6 +142,7 @@ def load_workflows(raw: dict[str, Any] | None = None) -> dict[str, WorkflowSpec]
         workflows[capability] = WorkflowSpec(
             capability=capability,
             job=_resolve(job_name, JOBS, "job", capability),
+            job_factory=_resolve(job_name, JOB_FACTORIES, "job factory", capability),
             resource_key=resource_name,
             resource_cls=_resolve(resource_name, RESOURCES, "resource", capability),
             settings_from_arguments=_resolve(
