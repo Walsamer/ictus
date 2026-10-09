@@ -1,0 +1,23 @@
+# Protected Python coverage policy for the Fleet integration gate.
+#
+# This file is forbidden scope (see Fleet's agentic-control project scope).
+# ``scripts/coverage.sh`` passes it via ``--cov-config`` so the Python coverage
+# threshold, source set and exclusions cannot be weakened by editing
+# ``pyproject.toml`` (which stays allowed scope for dependency management).
+#
+# Keep this in sync with ``pyproject.toml`` ``[tool.coverage.*]``; this file is
+# the authoritative gate.
+
+[tool.coverage.run]
+source = ["ictus_dagster"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 99
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

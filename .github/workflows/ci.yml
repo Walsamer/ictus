@@ -43,60 +43,21 @@ jobs:
       - name: pytest
         run: uv run --frozen pytest -q
 
-  e2e:
-    name: rust <-> dagster end to end
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-      - name: build rust bridge
-        run: cargo build -q -p ictus-bridge
-      - name: sync python
-        run: uv sync --frozen
-      - name: run boundary proof
-        run: ./scripts/e2e_rust_dagster.sh
-
-  coverage:
-    name: coverage thresholds
+  verify-integration:
+    name: integration verifier (Fleet parity)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview
+          components: rustfmt, clippy, llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@cargo-mutants
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - name: rust line coverage (>= 95%)
-        run: >-
-          cargo llvm-cov --workspace --summary-only
-          --ignore-filename-regex '(tests/|fixtures/)' --fail-under-lines 95
-      - name: python coverage (>= 99%, enforced by pyproject)
-        run: |
-          uv sync --frozen
-          uv run --frozen pytest -q
-
-  mutation:
-    name: mutation testing
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@cargo-mutants
-      - name: cargo-mutants (core, policy, adapters)
-        run: ./scripts/mutants.sh
-
-  properties:
-    name: property tests
-    runs-on: ubuntu-latest
-    env:
-      PROPTEST_CASES: "1024"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: proptest (deep run)
-        run: cargo test -p ictus-core --test properties
+      # Runs the exact command Fleet registers as the ictus verifier, so the
+      # wrapper and CI cannot drift: verify + coverage + e2e + property tests
+      # (PROPTEST_CASES=1024) + mutation.
+      - name: run scripts/verify-integration.sh
+        run: ./scripts/verify-integration.sh

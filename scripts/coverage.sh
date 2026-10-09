@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 # Coverage gate.
 #
-#   Python: >= 99% (configured in pyproject.toml [tool.coverage.report])
+#   Python: >= 99%, fixed policy in scripts/coverage.toml (protected scope)
 #   Rust:   >= 95% of lines (tests/fixtures excluded)
 #
-# Python coverage is enforced by `pytest` itself (see [tool.pytest.ini_options]
-# addopts), so a plain `pytest` run already fails below the threshold. This
-# script runs both gates and requires `cargo-llvm-cov` for the Rust side:
+# The Python threshold, source set and exclusions are read from the protected
+# ``scripts/coverage.toml`` (via ``--cov-config``) and the minimum is also passed
+# explicitly with ``--cov-fail-under``. Lowering ``pyproject.toml``'s
+# ``[tool.coverage.report] fail_under`` therefore does not weaken this gate.
 #
 #   cargo install cargo-llvm-cov --locked
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "[coverage] python (>= 99%)"
+echo "[coverage] python (>= 99%, fixed policy)"
 uv sync --frozen >/dev/null
-uv run --frozen pytest -q --cov=ictus_dagster --cov-report=term-missing
+uv run --frozen pytest -q \
+    --cov=ictus_dagster --cov-report=term-missing \
+    --cov-config=scripts/coverage.toml --cov-fail-under=99
 
 echo
 echo "[coverage] rust (>= 95% lines)"
