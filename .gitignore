@@ -17,6 +17,9 @@ build/
 # Dagster local instance / runtime state
 .dagster_home/
 dagster_home/
+# A cwd-relative Dagster store is a deployment footgun (bridge and daemon are
+# separate processes); never commit one.
+/storage/
 *.sqlite
 *.db
 

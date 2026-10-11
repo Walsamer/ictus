@@ -1,10 +1,14 @@
 # Copy this file into the directory named by DAGSTER_HOME before using
-# `ictus_dagster.bridge submit`.  SQLite persists receipts and run/event state;
+# `ictus_dagster.bridge submit`.
+#
+# Dagster stores run and event state under $DAGSTER_HOME/storage by default.
+# Do NOT point `storage.sqlite.base_dir` at a cwd-relative path such as
+# "./storage": the bridge and the dagster-daemon are separate processes that may
+# run from different working directories, and they would then use different
+# run/event stores (the daemon would not see the bridge's runs).
+#
 # QueuedRunCoordinator enforces the configured concurrency in a separately
 # launched `dagster-daemon run` worker.
-storage:
-  sqlite:
-    base_dir: ./storage
 run_launcher:
   module: dagster
   class: DefaultRunLauncher

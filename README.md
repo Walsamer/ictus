@@ -168,19 +168,27 @@ echo '<ExecutionIntent JSON>' | uv run --frozen python -m ictus_dagster.bridge
 The no-argument bridge command remains a synchronous demo.  Production uses a
 persistent Dagster instance, an independently started daemon and the
 receipt/query boundary.  Copy
-[`examples/dagster/dagster.yaml`](examples/dagster/dagster.yaml) into
-`$DAGSTER_HOME` (it configures SQLite persistence and a concurrency limit of
-two), then start `uv run --frozen dagster-daemon run` in another process.
+[`examples/dagster/dagster.yaml`](examples/dagster/dagster.yaml) and
+[`examples/dagster/workspace.yaml`](examples/dagster/workspace.yaml) into
+`$DAGSTER_HOME` (they configure SQLite persistence, a queued run coordinator
+and the registered code location), set the code-location name, then start
+`uv run --frozen dagster-daemon run` in another process.
 
 ```bash
+export DAGSTER_HOME=./.dagster_home
+export ICTUS_DAGSTER_CODE_LOCATION=ictus
 echo '<ExecutionIntent JSON>' | uv run --frozen python -m ictus_dagster.bridge submit
 echo '<receipt JSON>' | uv run --frozen python -m ictus_dagster.bridge query
+echo '<receipt JSON>' | uv run --frozen python -m ictus_dagster.bridge cancel
 ```
 
 Repeated submission of the same `intent_id` and immutable content returns its
 original receipt.  A changed payload for that identity fails closed; a caller
 that missed the first acknowledgement reconciles by submitting or querying the
-same identity rather than creating another run.
+same identity rather than creating another run.  A crash between recording and
+enqueueing is recovered on the next submission.  The supported configuration,
+durability guarantees and limitations are documented in
+[`docs/DURABLE_SUBMISSION.md`](docs/DURABLE_SUBMISSION.md).
 
 ## Architecture Baseline v1 and status
 
