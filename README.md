@@ -175,7 +175,7 @@ and the registered code location), set the code-location name, then start
 `uv run --frozen dagster-daemon run` in another process.
 
 ```bash
-export DAGSTER_HOME=./.dagster_home
+export DAGSTER_HOME=/var/lib/ictus/dagster_home   # must be absolute
 export ICTUS_DAGSTER_CODE_LOCATION=ictus
 echo '<ExecutionIntent JSON>' | uv run --frozen python -m ictus_dagster.bridge submit
 echo '<receipt JSON>' | uv run --frozen python -m ictus_dagster.bridge query
