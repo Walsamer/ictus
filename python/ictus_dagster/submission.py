@@ -377,6 +377,10 @@ def submit_intent(
     original receipt and never manufactures a second run.  A different digest
     fails closed.  If an earlier attempt recorded a run but crashed before
     enqueueing it, this call recovers that run instead of creating another.
+
+    Recovery is idempotent but *caller-driven*: a stranded run is repaired only
+    when the same identity is submitted again.  The durable control plane (for
+    example Tactus) owns the retry; Ictus runs no background reconciler.
     """
     validate_intent(payload)
     dagster_instance = production_instance(instance)

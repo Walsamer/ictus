@@ -136,17 +136,55 @@ the look-up/create race between local processes. On a host without `fcntl`
 (e.g. Windows) submission fails closed with `LockUnavailableError` rather than
 proceeding unserialized.
 
+### Deployment assumption: a single writer host
+
+The durable boundary assumes **one writer host per `DAGSTER_HOME`**:
+
+- every bridge process that submits for a given `DAGSTER_HOME` runs on that one
+  host (local submitters are serialized by the `fcntl` lock);
+- a single `dagster-daemon` serves the store (it may run on another host);
+- no second host opens the same store as a writer.
+
+Dagster does not enforce uniqueness on the bridge-owned identity/digest tags, so
+the boundary cannot prevent two hosts from creating two runs for one identity.
+Enabling multi-host writers requires coordination that Dagster's run history does
+not provide — for example a unique constraint on the identity tag in shared
+storage (rejecting the second insert), or an external lease / leader election in
+front of submission. Until such a mechanism exists, the single-writer assumption
+is an explicit operator contract, not an oversight.
+
+## Who owns recovery
+
+Recovery responsibility is split deliberately, and Ictus adds no background
+reconciler:
+
+- **Ictus owns idempotent repair on retry.** If a submitter dies after recording
+  a run but before enqueueing it, the run is left `NOT_STARTED`. The next
+  submission of the *same identity* re-enqueues it and returns the original
+  receipt; it never creates a second run.
+- **The durable control plane owns the retry.** Recovery happens only when
+  something re-submits the identity. In the Ictus/Tactus architecture that is
+  Tactus, which owns WorkOrder lifecycle and semantic-attempt budgets and
+  re-submits the same identity after a lost or failed attempt.
+- **Dagster owns execution scheduling and run state**, but it does not retry
+  submission of a run the bridge never enqueued.
+
+Consequence: Ictus deliberately does **not** sweep stranded `NOT_STARTED` runs in
+the background. A sweep would be a second reconciler with its own lifecycle
+state, which the ownership boundary forbids. If no upstream component ever
+retries the identity, the stranded run stays stranded; that is the documented
+trade-off, and automatic reconciliation would require an explicit owner and
+lifecycle.
+
 ## Known limitations
 
 - **Multi-host writers are unsupported.** The `fcntl` lock is local to one host
-  and one `DAGSTER_HOME`. Dagster does not enforce uniqueness on the
-  bridge-owned identity/digest tags, so two hosts submitting the same identity
-  concurrently can each create (and enqueue) a run. Deterministic
-  reconciliation only makes *reading and repair* deterministic; it does not
-  guarantee submission uniqueness. Multi-host writers must not be enabled until
-  a real distributed coordination mechanism exists (for example, a unique index
-  on the identity tag in shared storage, or an external lease). Until then,
-  run all submitters on a single host that shares one `DAGSTER_HOME`.
+  and one `DAGSTER_HOME`; Dagster does not enforce uniqueness on the bridge
+  tags. See
+  [Deployment assumption: a single writer host](#deployment-assumption-a-single-writer-host).
+- **Stranded-run recovery is caller-driven.** Ictus repairs a `NOT_STARTED` run
+  only when the same identity is submitted again; it runs no background sweep.
+  See [Who owns recovery](#who-owns-recovery).
 - **No bundled daemon supervision.** Ictus does not start or supervise the
   `dagster-daemon`; that is the operator's deployment responsibility.
 - **The `ICTUS_DAGSTER_CODE_LOCATION` name must match the daemon's workspace.**
@@ -166,5 +204,8 @@ proceeding unserialized.
   enqueueing, origin persistence, pending/terminal reconciliation, failure
   mapping, cancellation and process restart. The daemon hand-off is replayed
   in-process (see the module docstring).
+- `tests/python/test_submission_daemon_smoke.py` — opt-in (`ICTUS_DAEMON_SMOKE=1`)
+  live `dagster-daemon` + managed gRPC code-location smoke covering submission
+  through a terminal result. Isolated from the hermetic suite.
 - `tests/python/test_contracts_schemas.py` — validates example payloads and
   runtime validation against the versioned JSON schemas.
