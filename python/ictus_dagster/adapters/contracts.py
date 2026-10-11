@@ -25,6 +25,39 @@ OBSERVATION_CATEGORIES = {
 
 EXECUTION_STATUSES = {"succeeded", "failed", "timed_out", "cancelled"}
 
+# Reconciliation state of an ExecutionStatus: pending until the run is terminal.
+EXECUTION_STATES = {"pending", "terminal"}
+
+# Fields permitted by each contract. The JSON schemas are the source of truth
+# and are enforced (for responses) in tests; these sets let the pure-Python
+# validators fail closed on unknown fields at the boundary too.
+_RECEIPT_FIELDS = {
+    "schema_version",
+    "receipt_id",
+    "execution_id",
+    "intent_id",
+    "intent_digest",
+    "status",
+    "submitted_at",
+    "evidence",
+}
+_EXECUTION_STATUS_FIELDS = {
+    "schema_version",
+    "receipt",
+    "state",
+    "result",
+    "cancellation",
+}
+_CANCELLATION_FIELDS = {"requested", "accepted", "status"}
+
+
+def _reject_unknown(payload: dict[str, Any], allowed: set[str], contract: str) -> None:
+    unknown = set(payload) - allowed
+    if unknown:
+        raise ContractError(
+            f"{contract} carries unknown field(s): {', '.join(sorted(unknown))}"
+        )
+
 
 class ContractError(ValueError):
     """Raised when a payload does not satisfy the versioned contract."""
@@ -118,4 +151,43 @@ def validate_receipt(payload: dict[str, Any]) -> dict[str, Any]:
     evidence = _require(payload, "evidence", list)
     if not evidence:
         raise ContractError("receipt must carry durable evidence")
+    _reject_unknown(payload, _RECEIPT_FIELDS, "ExecutionReceipt")
+    return payload
+
+
+def validate_execution_status(payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate an ExecutionStatus reconciliation response and return it.
+
+    An ``ExecutionStatus`` is the query/cancel read model: it wraps the durable
+    ``ExecutionReceipt`` and, once terminal, the correlated ``ExecutionResult``.
+    A pending status must not carry a result; a terminal one must.
+    """
+    if not isinstance(payload, dict):
+        raise ContractError("ExecutionStatus must be a JSON object")
+    version = _require(payload, "schema_version", int)
+    if version != SCHEMA_VERSION:
+        raise ContractError(
+            f"unsupported schema_version {version}; supported is {SCHEMA_VERSION}"
+        )
+    state = _require(payload, "state", str)
+    if state not in EXECUTION_STATES:
+        raise ContractError(f"state must be one of {sorted(EXECUTION_STATES)}")
+    validate_receipt(_require(payload, "receipt", dict))
+    if state == "terminal":
+        validate_result(_require(payload, "result", dict))
+    elif "result" in payload:
+        raise ContractError("a pending ExecutionStatus must not carry a result")
+
+    cancellation = payload.get("cancellation")
+    if cancellation is not None:
+        if not isinstance(cancellation, dict):
+            raise ContractError("cancellation must be a JSON object")
+        _require(cancellation, "requested", bool)
+        _require(cancellation, "accepted", bool)
+        status = _require(cancellation, "status", str)
+        if not status.strip():
+            raise ContractError("cancellation.status must be non-empty")
+        _reject_unknown(cancellation, _CANCELLATION_FIELDS, "cancellation")
+
+    _reject_unknown(payload, _EXECUTION_STATUS_FIELDS, "ExecutionStatus")
     return payload

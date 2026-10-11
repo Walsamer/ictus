@@ -1,0 +1,10 @@
+# Copy this file into the directory named by DAGSTER_HOME next to dagster.yaml.
+#
+# It registers the Ictus code location for the running `dagster-daemon`. The
+# `location_name` MUST match `ICTUS_DAGSTER_CODE_LOCATION`, because the daemon
+# resolves the run's remote origin against this workspace.
+
+load_from:
+  - python_module:
+      module_name: ictus_dagster.definitions
+      location_name: ictus

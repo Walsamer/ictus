@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ictus.dev/contracts/execution-status.schema.json",
+  "title": "ExecutionStatus",
+  "description": "Point-in-time reconciliation view of one submitted ExecutionIntent. It wraps the durable ExecutionReceipt (the submit acknowledgement) and, once the run is terminal, the correlated ExecutionResult. It is a read model, not a durable record: Dagster remains the record of execution state, and an ExecutionReceipt remains the acknowledgement of submission.",
+  "type": "object",
+  "required": ["schema_version", "receipt", "state"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "receipt": { "$ref": "execution-receipt.schema.json" },
+    "state": { "type": "string", "enum": ["pending", "terminal"] },
+    "result": { "$ref": "execution-result.schema.json" },
+    "cancellation": { "$ref": "#/$defs/cancellation" }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "state": { "const": "pending" } },
+        "required": ["state"]
+      },
+      "then": { "properties": { "result": false } }
+    },
+    {
+      "if": {
+        "properties": { "state": { "const": "terminal" } },
+        "required": ["state"]
+      },
+      "then": { "required": ["result"] }
+    }
+  ],
+  "$defs": {
+    "cancellation": {
+      "type": "object",
+      "description": "The outcome of a cancel request. `requested` records that cancellation was asked for; `accepted` records whether Dagster's coordinator accepted it; `status` is the run status observed immediately afterwards. A request that is accepted may still be in progress (status CANCELING) and reconcile later to a terminal CANCELED state.",
+      "required": ["requested", "accepted", "status"],
+      "properties": {
+        "requested": { "type": "boolean" },
+        "accepted": { "type": "boolean" },
+        "status": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

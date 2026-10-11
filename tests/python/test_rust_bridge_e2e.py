@@ -4,6 +4,12 @@ This is the only test that crosses the language boundary end to end. It runs the
 built ``ictus`` binary, which produces a typed decision, an
 ``ExecutionIntent`` and an ``ExecutionResult`` through Dagster. It is skipped
 when the binary has not been built (``cargo test``/``cargo build`` builds it).
+
+Run it through ``scripts/e2e_rust_dagster.sh`` (or rebuild the binary first): a
+stale ``target/debug/ictus`` from before the generic decision vocabulary would
+otherwise report the legacy ``RETRY`` token and fail the canonical ``REEXECUTE``
+assertions below. ``RETRY`` is a v1 input alias only; the emitted vocabulary is
+the frozen v2 one (`docs/adr/0001-generic-decision-vocabulary.md`).
 """
 
 from __future__ import annotations
@@ -50,6 +56,9 @@ def test_full_flow_snapshot_to_result(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     trace = json.loads(proc.stdout)
 
+    # Canonical v2 vocabulary: the proposal is schema_version 2 and emits
+    # REEXECUTE (never the legacy v1 RETRY token).
+    assert trace["proposal"]["schema_version"] == 2
     assert trace["proposal"]["decision"] == "REEXECUTE"
     assert trace["policy_decision"]["decision"] == "ALLOW"
     assert trace["execution_intent"]["capability"] == "demo.verify"

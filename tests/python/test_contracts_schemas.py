@@ -15,6 +15,7 @@ from referencing import Registry, Resource
 
 from ictus_dagster.adapters.contracts import (
     ContractError,
+    validate_execution_status,
     validate_intent,
     validate_receipt,
 )
@@ -27,6 +28,9 @@ SCHEMA_EXAMPLE_PAIRS = [
     ("policy-decision.schema.json", "policy-decision.allow.json"),
     ("execution-intent.schema.json", "execution-intent.demo-verify.json"),
     ("execution-receipt.schema.json", "execution-receipt.demo-verify.json"),
+    ("execution-status.schema.json", "execution-status.pending.json"),
+    ("execution-status.schema.json", "execution-status.terminal.json"),
+    ("execution-status.schema.json", "execution-status.cancelled.json"),
     ("execution-result.schema.json", "execution-result.demo-verify.json"),
     ("decision-context.schema.json", "decision-context.initial.json"),
     ("decision-context.schema.json", "decision-context.recovery.json"),
@@ -347,3 +351,62 @@ def test_runtime_receipt_validation_accepts_a_complete_receipt() -> None:
 def test_runtime_receipt_validation_rejects_malformed_receipts(payload, match) -> None:
     with pytest.raises(ContractError, match=match):
         validate_receipt(payload)
+
+
+def test_runtime_receipt_validation_rejects_unknown_fields() -> None:
+    with pytest.raises(ContractError, match="unknown field"):
+        validate_receipt({**_receipt(), "state": "terminal"})
+
+
+def _execution_status(state: str = "pending", **overrides) -> dict:
+    payload = {"schema_version": 1, "receipt": _receipt(), "state": state}
+    if state == "terminal":
+        payload["result"] = _example("execution-result.demo-verify.json")
+    payload.update(overrides)
+    return payload
+
+
+def test_runtime_execution_status_validation_accepts_pending_and_terminal() -> None:
+    pending = _execution_status()
+    assert validate_execution_status(pending) is pending
+    terminal = _execution_status("terminal")
+    assert validate_execution_status(terminal) is terminal
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        ([], "must be a JSON object"),
+        (_execution_status(schema_version=2), "unsupported schema_version"),
+        (_execution_status(state="unknown"), "state must be one of"),
+        (_execution_status(state="terminal", result=None), "result must be"),
+        (_execution_status(result={"schema_version": 1}), "pending ExecutionStatus"),
+        (_execution_status(extra="x"), "unknown field"),
+    ],
+)
+def test_runtime_execution_status_validation_rejects_malformed_payloads(
+    payload, match
+) -> None:
+    with pytest.raises(ContractError, match=match):
+        validate_execution_status(payload)
+
+
+def test_runtime_execution_status_validates_cancellation() -> None:
+    payload = _execution_status(
+        "terminal", cancellation={"requested": True, "accepted": False, "status": "success"}
+    )
+    assert validate_execution_status(payload) is payload
+    with pytest.raises(ContractError, match="cancellation must be"):
+        validate_execution_status(_execution_status(cancellation="yes"))
+    with pytest.raises(ContractError, match="cancellation.status must be non-empty"):
+        validate_execution_status(
+            _execution_status(
+                cancellation={"requested": True, "accepted": True, "status": " "}
+            )
+        )
+    with pytest.raises(ContractError, match="unknown field"):
+        validate_execution_status(
+            _execution_status(
+                cancellation={"requested": True, "accepted": True, "status": "ok", "x": 1}
+            )
+        )
