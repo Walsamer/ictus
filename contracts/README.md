@@ -18,7 +18,8 @@ during a migration, and new wire versions change only when required.
 | PolicyDecision | `policy-decision.schema.json` | `ictus_core::PolicyDecision` | — |
 | DecisionEnvelope | `decision-envelope.schema.json` | `ictus_core::DecisionEnvelope` | — (validated output) |
 | ExecutionIntent | `execution-intent.schema.json` | `ictus_core::ExecutionIntent` | bridge input |
-| ExecutionReceipt | `execution-receipt.schema.json` | `ictus_ports::ExecutionReceipt` | durable submit/query |
+| ExecutionReceipt | `execution-receipt.schema.json` | `ictus_ports::ExecutionReceipt` | durable submit acknowledgement |
+| ExecutionStatus | `execution-status.schema.json` | — (read model) | durable query/cancel reconciliation |
 | ExecutionResult | `execution-result.schema.json` | `ictus_core::ExecutionResult` | bridge output |
 
 ## Conventions
@@ -60,6 +61,24 @@ recovery; a `RECOVERY` context must bind the failed attempt and its snapshot.
 The Rust and Python halves agree: `crates/core/tests/contracts_json.rs` parses
 the exact example files that `tests/python/test_contracts_schemas.py` validates
 the new schemas against.
+
+### ExecutionReceipt vs ExecutionStatus
+
+`ExecutionReceipt` is the durable acknowledgement that one immutable intent was
+recorded exactly once: `submit` returns it flat, and the Rust
+`ictus_ports::ExecutionReceipt` deserializes that same shape. `ExecutionStatus`
+is the *query/cancel read model*: it wraps a receipt and adds the current
+`state` (`pending` or `terminal`), the correlated `ExecutionResult` once
+terminal, and (for cancel) the cancellation outcome. The two are deliberately
+different contracts so a strict `ExecutionReceipt` reader never has to tolerate
+reconciliation-only fields.
+
+The Rust port models this read model as
+`ictus_ports::ExecutionQuery::{Pending, Terminal(ExecutionResult)}`, which maps
+directly onto `state` + `result`; `DurableExecutionBackend::cancel` returns `()`
+and therefore ignores the optional `cancellation` detail. No adapter implements
+that port over the JSON transport yet, so adding `ExecutionStatus` breaks no
+consumer.
 
 ### DecisionProposal v1 -> v2
 
