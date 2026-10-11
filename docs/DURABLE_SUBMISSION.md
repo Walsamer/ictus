@@ -18,27 +18,41 @@ it to the instance's queued coordinator. `ExecutionReceipt` and
 [`contracts/README.md`](../contracts/README.md)) so a strict receipt reader
 never has to tolerate reconciliation-only fields.
 
-## Supported deployment (required)
+## Supported deployment
 
 Durable submission is only meaningful on a queued, independently executed
-deployment. `production_instance()` rejects anything else explicitly:
+deployment. Requirements fall into two classes with different enforcement:
 
-1. **Persistent storage.** `DAGSTER_HOME` must be set and the instance must not
-   be ephemeral.
+**Checked synchronously, fail closed.** `production_instance()` rejects these
+immediately with `EphemeralStorageError` or `SubmissionConfigurationError`:
+
+1. **Persistent storage.** `DAGSTER_HOME` is set to an absolute path and the
+   instance is not ephemeral.
 2. **`QueuedRunCoordinator`.** The bridge process has no workspace, so it must
    not launch the run itself; `submit_run` only enqueues.
 3. **Independent launcher.** `DefaultRunLauncher` (not the InMemory/Sync
    launcher used by ephemeral/test instances).
+
+`_create_run` additionally requires `ICTUS_DAGSTER_CODE_LOCATION` and verifies
+that both the `remote_job_origin` and `job_code_origin` were persisted.
+
+**Operational prerequisites, not checked synchronously:**
+
 4. **A running `dagster-daemon`.** The daemon attaches its real workspace,
-   dequeues the run and launches it.
-5. **A registered code location.** The daemon's workspace must register the
-   location named by `ICTUS_DAGSTER_CODE_LOCATION`.
+   dequeues the run and launches it. `production_instance()` cannot observe
+   whether a daemon is live; without one the run simply stays `QUEUED`.
+5. **A registered, loadable code location.** The daemon's `workspace.yaml` must
+   register the location named by `ICTUS_DAGSTER_CODE_LOCATION` and be able to
+   load it. This is validated only when the daemon resolves and launches the
+   run; the bridge has no workspace to check against.
+
+There is no silent fallback to in-process execution.
 
 ### Environment variables
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `DAGSTER_HOME` | yes | Persistent Dagster instance home. |
+| `DAGSTER_HOME` | yes | Absolute path to the persistent Dagster instance home. |
 | `ICTUS_DAGSTER_CODE_LOCATION` | yes | Code-location name the daemon resolves (must match `workspace.yaml`). |
 | `ICTUS_DAGSTER_REPOSITORY` | no | Repository name inside that location; defaults to `__repository__` (the name Dagster gives a `Definitions` object). |
 
@@ -60,6 +74,11 @@ there. Do **not** configure a cwd-relative `storage.sqlite.base_dir` such as
 different working directories, so a relative path gives them different run
 stores and the daemon never sees the bridge's queued runs.
 
+The bundled example uses local SQLite. Run the bridge and the daemon on the
+**same host** so they share that file. Split them across hosts only after
+independently validating that the configured storage backend is safe for
+concurrent multi-host access.
+
 Initialize `$DAGSTER_HOME` **once** before the first concurrent use (start the
 daemon, or run `dagster instance migrate`). SQLite migrations are not safe
 against two processes initializing a brand-new store at the same time, so
@@ -68,7 +87,7 @@ do not point the bridge and the daemon at an uninitialized store simultaneously.
 Then, in a separate process:
 
 ```bash
-export DAGSTER_HOME=./.dagster_home
+export DAGSTER_HOME=/var/lib/ictus/dagster_home
 export ICTUS_DAGSTER_CODE_LOCATION=ictus
 uv run --frozen dagster-daemon run
 ```
@@ -138,10 +157,12 @@ proceeding unserialized.
 
 ### Deployment assumption: a single writer host
 
-The durable boundary assumes **one writer host per `DAGSTER_HOME`**:
+This is the distinction between **supported multi-process, single-host
+execution** and **unsupported multi-host writers**. The boundary assumes **one
+writer host per `DAGSTER_HOME`**:
 
-- every bridge process that submits for a given `DAGSTER_HOME` runs on that one
-  host (local submitters are serialized by the `fcntl` lock);
+- multiple bridge processes on **one host** are supported; they are serialized
+  by the `fcntl` lock;
 - a single `dagster-daemon` serves the store (it may run on another host);
 - no second host opens the same store as a writer.
 
@@ -152,6 +173,35 @@ not provide — for example a unique constraint on the identity tag in shared
 storage (rejecting the second insert), or an external lease / leader election in
 front of submission. Until such a mechanism exists, the single-writer assumption
 is an explicit operator contract, not an oversight.
+
+## Submission retry vs semantic re-execution
+
+Two different things look like "trying again" and must not be conflated:
+
+| | Transport / submission retry (A) | Semantic `REEXECUTE` (B) |
+| --- | --- | --- |
+| Identity | same `intent_id` **and** same `intent_digest` | a new attempt identity |
+| Meaning | the same semantic attempt, not yet acknowledged | a new authorized semantic attempt |
+| Mechanism | recover/reconcile the existing Dagster run or its terminal result | Ictus emits a fresh intent after policy authorization |
+| Duplicate execution | must never happen | is the point |
+| Accounting | none; the same durable submission row is recovered | Tactus owns attempt + semantic-budget accounting |
+
+`submit` implements only (A). Re-running work is (B), owned by Ictus policy and
+Tactus attempt accounting; the submission boundary never turns a transport retry
+into a new run.
+
+### Durable replay in the Tactus integration
+
+The replay trigger is durable, not in-memory. Tactus persists every submission
+with a nullable Dagster receipt and exposes unreceipted rows for send or
+reconciliation after restart (`pending_submissions()` for active attempts,
+`reconciliation_submissions()` for closed ones, `attach_receipt()` to bind a
+late receipt). A crash after send but before acknowledgement replays the *same*
+submission identity and attaches the receipt; it cannot synthesize a replacement
+run. This is specified in Tactus
+[`EXECUTION_AND_RECOVERY.md`](https://github.com/Walsamer/tactus/blob/main/docs/architecture/EXECUTION_AND_RECOVERY.md)
+("Crash safety and duplicate prevention") and covered by its process-crash tests.
+Ictus therefore adds no reconciler of its own.
 
 ## Who owns recovery
 
