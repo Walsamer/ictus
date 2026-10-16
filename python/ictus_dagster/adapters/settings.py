@@ -6,6 +6,7 @@ are pure functions so they can be unit-tested in isolation.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 __all__ = [
@@ -20,6 +21,17 @@ def _as_int(value: Any, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _bounded_seconds(value: Any, default: float = 0.0) -> float:
+    """Accept only a small, deterministic hold used to exercise the run queue."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(seconds):
+        return default
+    return min(max(seconds, 0.0), 30.0)
 
 
 def _as_bool(value: Any, default: bool) -> bool:
@@ -41,6 +53,10 @@ def capability_settings(arguments: dict[str, Any]) -> dict[str, Any]:
         "fail_until_attempt": _as_int(arguments.get("fail_until_attempt"), 0),
         "fail_hard": _as_bool(arguments.get("fail_hard"), False),
         "fail_verify": _as_bool(arguments.get("fail_verify"), False),
+        # This is intentionally bounded so a queue/concurrency smoke check has
+        # a reproducible in-progress interval without turning an intent into an
+        # unbounded sleep request.
+        "hold_seconds": _bounded_seconds(arguments.get("hold_seconds")),
     }
 
 

@@ -113,6 +113,14 @@ execution-state database.
    with no result; terminal runs return `state: "terminal"` and the correlated
    `ExecutionResult` in `result`.
 
+The bundled configuration sets both `run_retries.enabled: false` and
+`max_user_code_failure_retries: 0`. This preserves the one semantic intent →
+one Dagster run boundary, while the jobs' own bounded step `RetryPolicy`
+continues to handle safe step retries. `demo.verify` accepts a bounded
+`hold_seconds` argument (0–30 seconds) solely to make queue-limit verification
+reproducible; it is executed by the job after it has been independently
+launched, never by the submission caller.
+
 ### Cancellation
 
 `cancel` calls `instance.run_coordinator.cancel_run(run_id)`. The response
@@ -257,5 +265,9 @@ lifecycle.
 - `tests/python/test_submission_daemon_smoke.py` — opt-in (`ICTUS_DAEMON_SMOKE=1`)
   live `dagster-daemon` + managed gRPC code-location smoke covering submission
   through a terminal result. Isolated from the hermetic suite.
+- `scripts/dagster_submission_smoke.py --evidence <path>` — a bounded,
+  disposable live-daemon scenario runner. It retains exact versions, receipt
+  IDs and correlated terminal results; it also proves the configured one-run
+  queue limit and queued cancellation acknowledgement.
 - `tests/python/test_contracts_schemas.py` — validates example payloads and
   runtime validation against the versioned JSON schemas.

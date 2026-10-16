@@ -66,13 +66,22 @@ def test_capability_settings_coerces_and_defaults() -> None:
     config = capability_settings(
         {"fail_until_attempt": None, "fail_hard": "yes", "fail_verify": "false"}
     )
-    assert config == {"fail_until_attempt": 0, "fail_hard": True, "fail_verify": False}
+    assert config == {
+        "fail_until_attempt": 0,
+        "fail_hard": True,
+        "fail_verify": False,
+        "hold_seconds": 0.0,
+    }
 
 
 def test_bool_coercion_accepts_non_string_values() -> None:
     # Any non-bool, non-string, non-None value is coerced via truthiness.
     assert capability_settings({"fail_hard": 1})["fail_hard"] is True
     assert capability_settings({"fail_hard": 0})["fail_hard"] is False
+    assert capability_settings({"hold_seconds": "1.5"})["hold_seconds"] == 1.5
+    assert capability_settings({"hold_seconds": -1})["hold_seconds"] == 0.0
+    assert capability_settings({"hold_seconds": 99})["hold_seconds"] == 30.0
+    assert capability_settings({"hold_seconds": "nan"})["hold_seconds"] == 0.0
 
 
 def test_known_unsupported_capability_is_rejected() -> None:

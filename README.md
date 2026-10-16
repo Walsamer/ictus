@@ -182,6 +182,15 @@ echo '<receipt JSON>' | uv run --frozen python -m ictus_dagster.bridge query
 echo '<receipt JSON>' | uv run --frozen python -m ictus_dagster.bridge cancel
 ```
 
+For a disposable live-daemon check that records the exact Dagster/Python
+versions, receipts and terminal results (including the one-run queue limit and
+queued cancellation), run:
+
+```bash
+uv run --frozen python scripts/dagster_submission_smoke.py \
+  --evidence /tmp/ictus-dagster-submission-evidence.json
+```
+
 Repeated submission of the same `intent_id` and immutable content returns its
 original receipt.  A changed payload for that identity fails closed; a caller
 that missed the first acknowledgement reconciles by submitting or querying the
