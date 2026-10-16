@@ -186,6 +186,31 @@ execution, and Fleet owns Fleet state. M4 adds **no** runtime coupling.
   `crates/core/tests/contracts_api.rs` and
   `tests/python/test_contracts_schemas.py`.
 
+## DEC-015 — bounded semantic recovery decisions are a pure, generic policy
+
+- **Decision:** add a generic recovery provider (`crates/policy/src/recovery.rs`)
+  that maps a normalized `RECOVERY` context and canonical semantic accounting to
+  a validated `RecoveryDecision`. Outcomes are the frozen vocabulary plus an
+  explicit, non-executable `NO_RECOVERY_WORK`; success maps to the latter, never
+  `ABORT`. Re-execution is allowed only within the semantic budget
+  (`attempts.semantic` / `attempts.max_semantic`; legacy `retry.*` accepted only
+  as a complete pair). A persistent backend failure may emit a `ROUTE` with
+  normalized role constraints; `DECOMPOSE` requires a typed, bounded
+  (`<= 16` children), approved plan and creates no children in Ictus; ambiguous
+  or exhausted cases escalate, or abort only under the explicit
+  `abort_on_exhaustion` constraint.
+- **Why:** this replaces the Tactus-specific semantic policy with a generic one
+  while keeping the frozen vocabulary and domain independence. There is no
+  implicit `0/0` fallback, and no unsafe executable fallback is produced from
+  missing capability or ambiguous evidence.
+- **Boundaries:** the provider is a pure function; it runs no loop, no delay
+  scheduler, mutates no durable state and makes no direct runtime call.
+  `DefaultPolicyEvaluator` fails closed on a `DECOMPOSE` without a typed bounded
+  plan.
+- **Enforced by:** `crates/policy/src/recovery.rs`,
+  `crates/policy/src/{rules,evaluator}.rs`, and the decision tables in
+  `crates/policy/tests/recovery.rs`.
+
 ## Open decisions (not yet made)
 
 - **License holder scope.** Apache-2.0 is adopted with the copyright holder

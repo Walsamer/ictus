@@ -7,16 +7,26 @@
 //! It reads only domain-neutral facts from the snapshot:
 //!
 //! - `observation.category` (SCREAMING_SNAKE_CASE)
-//! - `retry.attempt`, `retry.budget` (integers; the *semantic re-execution*
-//!   budget, enforced by policy and distinct from the execution backend's own
-//!   step retries)
+//! - the canonical semantic attempt accounting `attempts.semantic` /
+//!   `attempts.max_semantic` (with the complete legacy v1 pair
+//!   `retry.attempt` / `retry.budget` still accepted). Missing or ambiguous
+//!   accounting escalates: there is no implicit `0/0` exhausted fallback.
 //! - `capability.id` (the capability to re-execute)
 //! - `observation.message` (optional)
+//!
+//! This v1 provider emits the frozen `DecisionProposal` vocabulary. Success is
+//! intentionally still a proposal-shaped `ABORT` (the vocabulary has no no-op),
+//! but it is tagged with `recovery_outcome = "NO_RECOVERY_WORK"` so a
+//! cross-system consumer can never mistake it for domain retirement. The
+//! authoritative bounded [`crate::recovery::RecoveryDecision`] is produced by
+//! [`crate::recovery::GenericRecoveryProvider`].
 
 use ictus_core::{
     DecisionKind, DecisionProposal, ObservationCategory, ProviderMetadata, StateSnapshot,
 };
 use ictus_ports::{DecisionProvider, PortError};
+
+use crate::recovery::semantic_budget_from_snapshot;
 
 /// The deterministic rules provider id used in proposal provenance.
 pub const PROVIDER_ID: &str = "rules.v1";
@@ -49,8 +59,6 @@ impl DecisionProvider for RuleDecisionProvider {
     fn propose(&self, snapshot: &StateSnapshot) -> Result<DecisionProposal, PortError> {
         snapshot.validate()?;
         let category = parse_category(snapshot.fact_str("observation.category"));
-        let attempt = snapshot.fact_i64("retry.attempt").unwrap_or(0);
-        let budget = snapshot.fact_i64("retry.budget").unwrap_or(0);
         let capability = snapshot
             .fact_str("capability.id")
             .map(str::to_string)
@@ -67,27 +75,48 @@ impl DecisionProvider for RuleDecisionProvider {
         match category {
             ObservationCategory::Success => {
                 proposal.decision = DecisionKind::Abort;
-                proposal.reason = Some("observation reports success; no recovery required".into());
+                proposal.reason = Some(
+                    "observation reports success; no semantic recovery work (not domain retirement)"
+                        .into(),
+                );
+                // Make the no-recovery-work semantics machine-checkable so a
+                // cross-system fixture cannot read `ABORT` as retirement.
+                proposal = proposal.with_argument(
+                    "recovery_outcome",
+                    serde_json::Value::String("NO_RECOVERY_WORK".to_string()),
+                );
             }
             ObservationCategory::WorkerTimeout
             | ObservationCategory::ProcessCrash
             | ObservationCategory::ProviderUnavailable
             | ObservationCategory::ResourceExhausted => {
-                if capability.is_none() {
-                    proposal.decision = DecisionKind::Escalate;
-                    proposal.reason =
-                        Some("re-executable failure but no capability id to re-execute".into());
-                } else if attempt < budget {
-                    proposal.decision = DecisionKind::Reexecute;
-                    proposal.capability = capability;
-                    proposal.reason = Some(format!(
-                        "re-executable {category:?} within re-execution budget ({attempt}/{budget})"
-                    ));
-                } else {
-                    proposal.decision = DecisionKind::Escalate;
-                    proposal.reason = Some(format!(
-                        "{category:?} with exhausted re-execution budget ({attempt}/{budget})"
-                    ));
+                match semantic_budget_from_snapshot(snapshot) {
+                    Err(error) => {
+                        proposal.decision = DecisionKind::Escalate;
+                        proposal.reason =
+                            Some(format!("ambiguous semantic attempt accounting: {error}"));
+                    }
+                    Ok(budget) if budget.is_exhausted() => {
+                        proposal.decision = DecisionKind::Escalate;
+                        proposal.reason = Some(format!(
+                            "{category:?} with exhausted semantic attempt budget ({} of {})",
+                            budget.semantic_attempts, budget.max_semantic_attempts
+                        ));
+                    }
+                    Ok(_) => {
+                        if capability.is_none() {
+                            proposal.decision = DecisionKind::Escalate;
+                            proposal.reason = Some(
+                                "re-executable failure but no capability id to re-execute".into(),
+                            );
+                        } else {
+                            proposal.decision = DecisionKind::Reexecute;
+                            proposal.capability = capability;
+                            proposal.reason = Some(format!(
+                                "re-executable {category:?} within the semantic attempt budget"
+                            ));
+                        }
+                    }
                 }
             }
             ObservationCategory::VerificationFailure | ObservationCategory::IntegrationConflict => {
@@ -191,6 +220,49 @@ mod tests {
             .propose(&snapshot("SUCCESS", 0, 5))
             .unwrap();
         assert_eq!(proposal.decision, DecisionKind::Abort);
+        // `ABORT` here means "no recovery work", never domain retirement.
+        assert_eq!(
+            proposal.arguments["recovery_outcome"],
+            serde_json::json!("NO_RECOVERY_WORK")
+        );
+    }
+
+    #[test]
+    fn missing_accounting_escalates_instead_of_assuming_zero_of_zero() {
+        let snapshot = StateSnapshot::new(
+            "s1",
+            "2026-10-01T00:00:00Z",
+            "software",
+            Subject::new("task", "t1"),
+        )
+        .with_fact(Fact::string("observation.category", "WORKER_TIMEOUT"))
+        .with_fact(Fact::string("capability.id", "demo.verify"));
+        let proposal = RuleDecisionProvider::new().propose(&snapshot).unwrap();
+        assert_eq!(proposal.decision, DecisionKind::Escalate);
+        assert!(proposal
+            .reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("ambiguous semantic attempt accounting"));
+    }
+
+    #[test]
+    fn canonical_accounting_is_used_over_the_legacy_pair() {
+        let snapshot = StateSnapshot::new(
+            "s1",
+            "2026-10-01T00:00:00Z",
+            "software",
+            Subject::new("task", "t1"),
+        )
+        .with_fact(Fact::string("observation.category", "WORKER_TIMEOUT"))
+        .with_fact(Fact::integer("attempts.semantic", 1))
+        .with_fact(Fact::integer("attempts.max_semantic", 2))
+        // A conflicting legacy pair must not win.
+        .with_fact(Fact::integer("retry.attempt", 9))
+        .with_fact(Fact::integer("retry.budget", 9))
+        .with_fact(Fact::string("capability.id", "demo.verify"));
+        let proposal = RuleDecisionProvider::new().propose(&snapshot).unwrap();
+        assert_eq!(proposal.decision, DecisionKind::Reexecute);
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub mod approval;
 pub mod composition;
 pub mod evaluator;
 pub mod intent;
+pub mod recovery;
 pub mod registry;
 pub mod routing;
 pub mod rules;
@@ -27,6 +28,12 @@ pub use composition::{
 };
 pub use evaluator::DefaultPolicyEvaluator;
 pub use intent::{build_execution_intent, build_routed_execution_intent};
+pub use recovery::{
+    route_constraints_from_snapshot, semantic_budget_from_snapshot, validate_decomposition_plan,
+    DecompositionPlan, GenericRecoveryProvider, PlannedChild, RecoveryDecision, RecoveryOutcome,
+    RecoveryRequest, CONSTRAINT_ABORT_ON_EXHAUSTION, MAX_DECOMPOSITION_CHILDREN,
+    RECOVERY_POLICY_VERSION, RECOVERY_PROVIDER_ID,
+};
 pub use registry::InMemoryCapabilityRegistry;
 pub use routing::{
     select_route, NoRoute, NoRouteReason, RouteApproval, RouteSelection, RoutingPolicy,
