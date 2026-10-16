@@ -15,6 +15,22 @@ use ictus_ports::{ApprovalProvider, CapabilityRegistry, PolicyEvaluator, PortErr
 
 use crate::{intent::build_execution_intent, validation::validate_capability};
 
+/// Validate the typed bounded plan carried by a `DECOMPOSE` proposal.
+///
+/// A `DECOMPOSE` without a bounded plan is never admitted at the trust
+/// boundary: it fails closed instead of granting an adapter a vague
+/// decomposition mandate. Ictus still creates no children from the plan.
+fn validate_decompose_proposal(
+    proposal: &DecisionProposal,
+) -> Result<(), ictus_core::ContractError> {
+    match proposal.arguments.get("decomposition_plan") {
+        Some(value) => crate::recovery::DecompositionPlan::from_json(value).map(|_| ()),
+        None => Err(ictus_core::ContractError::MissingField(
+            "decomposition_plan",
+        )),
+    }
+}
+
 /// The approval tokens a capability requires.
 ///
 /// A high-risk capability with no named approvals implicitly requires a human
@@ -65,7 +81,16 @@ impl PolicyEvaluator for DefaultPolicyEvaluator {
 
         // 2. Decisions that carry no execution.
         match proposal.decision {
-            DecisionKind::Abort | DecisionKind::Escalate | DecisionKind::Decompose => {
+            DecisionKind::Decompose => {
+                if let Err(error) = validate_decompose_proposal(proposal) {
+                    return Ok(decision.with_reason(format!("invalid decomposition: {error}")));
+                }
+                decision.decision = PolicyDecisionKind::Allow;
+                return Ok(decision.with_reason(
+                    "DECOMPOSE is permitted under a validated bounded plan and never reaches the execution backend",
+                ));
+            }
+            DecisionKind::Abort | DecisionKind::Escalate => {
                 decision.decision = PolicyDecisionKind::Allow;
                 return Ok(decision.with_reason(format!(
                     "{:?} is always permitted and never reaches the execution backend",
@@ -109,13 +134,21 @@ impl PolicyEvaluator for DefaultPolicyEvaluator {
 
         // 4. The semantic re-execution budget is enforced here, not in the
         // execution backend. This is distinct from Dagster's own step retries.
+        // The canonical accounting is `attempts.semantic` / `attempts.max_semantic`;
+        // a missing or ambiguous pair fails closed rather than defaulting to 0/0.
         if proposal.decision == DecisionKind::Reexecute {
-            let attempt = snapshot.fact_i64("retry.attempt").unwrap_or(0);
-            let budget = snapshot.fact_i64("retry.budget").unwrap_or(0);
-            if attempt >= budget {
-                return Ok(decision.with_reason(format!(
-                    "re-execution budget exhausted ({attempt}/{budget})"
-                )));
+            match crate::recovery::semantic_budget_from_snapshot(snapshot) {
+                Ok(budget) if budget.is_exhausted() => {
+                    return Ok(decision.with_reason(format!(
+                        "semantic re-execution budget exhausted ({} of {})",
+                        budget.semantic_attempts, budget.max_semantic_attempts
+                    )));
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    return Ok(decision
+                        .with_reason(format!("ambiguous semantic attempt accounting: {error}")));
+                }
             }
         }
 
@@ -259,7 +292,33 @@ mod tests {
     }
 
     #[test]
-    fn decompose_is_allowed_and_produces_no_intent() {
+    fn decompose_with_a_bounded_plan_is_allowed_and_produces_no_intent() {
+        let evaluator = DefaultPolicyEvaluator::new();
+        let decompose = proposal(DecisionKind::Decompose, None).with_argument(
+            "decomposition_plan",
+            serde_json::json!({
+                "plan_id": "plan-1",
+                "children": [
+                    { "subject_id": "t1-a", "capability": "demo.verify" },
+                    { "subject_id": "t1-b", "capability": "demo.verify" }
+                ]
+            }),
+        );
+        let decision = evaluator
+            .evaluate(
+                &snapshot(),
+                &decompose,
+                &registry(),
+                &crate::approval::NeverApproved,
+            )
+            .unwrap();
+        assert_eq!(decision.decision, PolicyDecisionKind::Allow);
+        assert!(!decision.is_executable());
+        assert!(decision.modified_intent.is_none());
+    }
+
+    #[test]
+    fn decompose_without_a_bounded_plan_is_denied() {
         let evaluator = DefaultPolicyEvaluator::new();
         let decision = evaluator
             .evaluate(
@@ -269,8 +328,7 @@ mod tests {
                 &crate::approval::NeverApproved,
             )
             .unwrap();
-        assert_eq!(decision.decision, PolicyDecisionKind::Allow);
-        assert!(!decision.is_executable());
+        assert_eq!(decision.decision, PolicyDecisionKind::Deny);
         assert!(decision.modified_intent.is_none());
     }
 

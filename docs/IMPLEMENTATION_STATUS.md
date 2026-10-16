@@ -21,9 +21,21 @@ implementation PR; architecture documentation does not promote that commit.
 
 ## Missing for the complete Tactus path
 
-- Versioned initial/recovery context profile and aligned semantic-budget facts.
 - Validated decision/intent binding to subject, revision, policy and real grants.
-- Semantic recovery policy using facts.
+
+## Semantic recovery policy
+
+`crates/policy/src/recovery.rs` provides the generic bounded recovery provider.
+It turns a `RECOVERY` context and its canonical semantic accounting into a
+validated `RecoveryDecision`: success is an explicit `NO_RECOVERY_WORK` (never
+`ABORT`), re-executable terminal failures re-execute only within the semantic
+budget (`attempts.semantic` / `attempts.max_semantic`, legacy `retry.*` only as
+a complete pair), persistent backend failures may `ROUTE` under normalized role
+constraints, semantic failures require a typed bounded `DECOMPOSE` plan plus
+approval, and ambiguous or exhausted cases escalate (or abort only under the
+explicit `abort_on_exhaustion` constraint). It has no loop, scheduler, durable
+state mutation or direct runtime call. `docs/DECISIONS.md` DEC-015 records the
+boundary; `crates/policy/tests/recovery.rs` holds the decision tables.
 
 ## Routing policy
 
@@ -41,9 +53,11 @@ from `BackendRegistry.compatible()` to `LocalPolicyComposition::validate_with_ro
 
 The synchronous `execute_in_process` bridge has useful history/correlation but
 does not establish queued, independently launched restart-safe execution.
-Rules read retry.attempt/retry.budget while Tactus emits different semantic facts;
-missing values must not silently become an exhausted 0/0 budget. ABORT-on-SUCCESS
-cannot be wired to domain retirement. Python/Rust validation parity needs review.
+Rules read the canonical semantic accounting (`attempts.semantic` /
+`attempts.max_semantic`) and escalate on missing/ambiguous values instead of
+silently exhausting a 0/0 budget. Success is tagged `recovery_outcome =
+"NO_RECOVERY_WORK"` so `ABORT`-on-success cannot be wired to domain retirement.
+Python/Rust validation parity needs review.
 
 See [reconciliation](architecture/BASELINE_V1_RECONCILIATION.md) for evidence and
 [Issues](https://github.com/Walsamer/ictus/issues) for implementation intent.
