@@ -20,6 +20,9 @@ server, and multi-host submission (the local ``fcntl`` lock is single-host only)
 from __future__ import annotations
 
 import json
+import multiprocessing
+import os
+import signal
 
 import pytest
 from dagster import DagsterInstance, DagsterRunStatus, RunsFilter
@@ -72,6 +75,43 @@ def _runs_for(instance, identity):
     )
 
 
+def _submit_in_child(home: str, payload: dict, start, send) -> None:
+    """Open the real instance in a separate process and submit one intent."""
+    os.environ["DAGSTER_HOME"] = home
+    os.environ[submission.CODE_LOCATION_ENV] = CODE_LOCATION
+    os.environ[submission.REPOSITORY_ENV] = REPOSITORY
+    instance = DagsterInstance.get()
+    try:
+        start.wait(timeout=20)
+        send.send({"receipt": submission.submit_intent(payload, instance=instance)})
+    except Exception as error:  # pragma: no cover - asserted by the parent
+        send.send({"error": type(error).__name__, "message": str(error)})
+    finally:
+        instance.dispose()
+
+
+def _record_without_enqueueing_in_child(home: str, payload: dict, send) -> None:
+    """Stop at the durable-record boundary for a real process-crash test."""
+    os.environ["DAGSTER_HOME"] = home
+    os.environ[submission.CODE_LOCATION_ENV] = CODE_LOCATION
+    os.environ[submission.REPOSITORY_ENV] = REPOSITORY
+    instance = DagsterInstance.get()
+    try:
+        spec = resolve_workflow(payload["capability"])
+        run = submission._create_run(
+            instance,
+            spec,
+            payload,
+            payload["intent_id"],
+            submission.intent_digest(payload),
+        )
+        send.send(run.run_id)
+        # The parent terminates this process here, before a queue hand-off.
+        multiprocessing.Event().wait(60)
+    finally:
+        instance.dispose()
+
+
 def _execute_queued_run(instance, run_id):
     """Replay the daemon's hand-off and execute the recorded run in-process."""
     from dagster import reconstructable
@@ -118,6 +158,52 @@ def test_same_intent_submitted_twice_creates_one_run(persistent_instance) -> Non
     second = submission.submit_intent(_intent(), instance=persistent_instance)
 
     assert first["receipt_id"] == second["receipt_id"]
+    assert len(_runs_for(persistent_instance, "attempt:integration")) == 1
+
+
+def test_independent_processes_converge_on_one_persistent_receipt(persistent_instance) -> None:
+    """The host lock covers the real SQLite run store, not an instance double."""
+    context = multiprocessing.get_context("spawn")
+    start = context.Event()
+    receivers, processes = [], []
+    for _ in range(2):
+        receive, send = context.Pipe(duplex=False)
+        process = context.Process(
+            target=_submit_in_child,
+            args=(os.environ["DAGSTER_HOME"], _intent(), start, send),
+        )
+        process.start()
+        send.close()
+        receivers.append(receive)
+        processes.append(process)
+
+    start.set()
+    responses = [receive.recv() for receive in receivers]
+    for process in processes:
+        process.join(timeout=30)
+        assert process.exitcode == 0
+
+    assert all("error" not in response for response in responses)
+    receipt_ids = {response["receipt"]["receipt_id"] for response in responses}
+    assert len(receipt_ids) == 1
+    assert len(_runs_for(persistent_instance, "attempt:integration")) == 1
+
+    receive, send = context.Pipe(duplex=False)
+    conflicting = context.Process(
+        target=_submit_in_child,
+        args=(
+            os.environ["DAGSTER_HOME"],
+            _intent(arguments={"fail_hard": True}),
+            start,
+            send,
+        ),
+    )
+    conflicting.start()
+    send.close()
+    response = receive.recv()
+    conflicting.join(timeout=30)
+    assert conflicting.exitcode == 0
+    assert response["error"] == "SubmissionConflict"
     assert len(_runs_for(persistent_instance, "attempt:integration")) == 1
 
 
@@ -210,6 +296,51 @@ def test_crash_after_record_before_enqueue_is_recovered(persistent_instance, mon
     # The recovered run executes exactly once.
     result = _execute_queued_run(persistent_instance, receipt["receipt_id"])
     assert result.success
+    assert len(_runs_for(persistent_instance, "attempt:integration")) == 1
+
+
+def test_process_death_after_record_before_queue_handoff_is_recovered(persistent_instance) -> None:
+    """Replay repairs the original durable record after an actual process death."""
+    context = multiprocessing.get_context("spawn")
+    receive, send = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_record_without_enqueueing_in_child,
+        args=(os.environ["DAGSTER_HOME"], _intent(), send),
+    )
+    process.start()
+    send.close()
+    run_id = receive.recv()
+    # A harness that ignores SIGTERM (SIG_IGN) makes spawned children inherit
+    # that disposition, and then terminate() is a silent no-op.  Detect it and
+    # use SIGKILL so the simulated crash is deterministic in every environment.
+    if signal.getsignal(signal.SIGTERM) == signal.SIG_IGN:
+        process.kill()
+    else:
+        process.terminate()
+    process.join(timeout=15)
+    if process.is_alive():  # pragma: no cover - defensive; SIGKILL cannot be caught
+        process.kill()
+        process.join(timeout=10)
+    assert process.exitcode is not None and process.exitcode != 0
+
+    stranded = persistent_instance.get_run_by_id(run_id)
+    assert stranded is not None and stranded.status == DagsterRunStatus.NOT_STARTED
+    restart = context.Event()
+    restart.set()
+    receive, send = context.Pipe(duplex=False)
+    replay = context.Process(
+        target=_submit_in_child,
+        args=(os.environ["DAGSTER_HOME"], _intent(), restart, send),
+    )
+    replay.start()
+    send.close()
+    response = receive.recv()
+    replay.join(timeout=30)
+    assert replay.exitcode == 0
+    assert "error" not in response
+    receipt = response["receipt"]
+    assert receipt["receipt_id"] == run_id
+    assert persistent_instance.get_run_by_id(run_id).status == DagsterRunStatus.QUEUED
     assert len(_runs_for(persistent_instance, "attempt:integration")) == 1
 
 

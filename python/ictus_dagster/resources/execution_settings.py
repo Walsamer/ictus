@@ -18,3 +18,4 @@ class ExecutionSettings(ConfigurableResource):
     fail_until_attempt: int = 0
     fail_hard: bool = False
     fail_verify: bool = False
+    hold_seconds: float = 0.0

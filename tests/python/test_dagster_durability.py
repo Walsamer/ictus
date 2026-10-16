@@ -24,6 +24,11 @@ def test_clean_run_succeeds_on_first_attempt() -> None:
     assert result.output_for_node("finalize_op")["execute_attempts"] == 1
 
 
+def test_bounded_hold_keeps_execution_in_dagster() -> None:
+    result, _ = _run(hold_seconds=0.001)
+    assert result.success
+
+
 def test_retry_recovers_within_the_same_run() -> None:
     result, _ = _run(fail_until_attempt=2)
     assert result.success

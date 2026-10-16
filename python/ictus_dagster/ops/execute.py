@@ -7,6 +7,8 @@ initial attempt), so no attempt state is kept in application code.
 
 from __future__ import annotations
 
+import time
+
 from dagster import Failure, In, Out, RetryPolicy, op
 
 from ictus_dagster.resources.execution_settings import ExecutionSettings
@@ -40,4 +42,7 @@ def execute_op(context, prepared: dict, settings: ExecutionSettings) -> dict:
         raise Failure(
             description=f"intentional execution failure on attempt {attempt}"
         )
+    if settings.hold_seconds:
+        context.log.info("execute: holding run for %.3f seconds", settings.hold_seconds)
+        time.sleep(settings.hold_seconds)
     return {**prepared, "execute_attempts": attempt, "executed": True}

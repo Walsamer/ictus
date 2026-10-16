@@ -17,5 +17,11 @@ run_coordinator:
   class: QueuedRunCoordinator
   config:
     max_concurrent_runs: 2
+    max_user_code_failure_retries: 0
+# One semantic intent is one Dagster run.  Step-level RetryPolicy remains
+# enabled inside the job; automatic creation of a replacement run is disabled.
+run_retries:
+  enabled: false
+  max_retries: 0
 telemetry:
   enabled: false
