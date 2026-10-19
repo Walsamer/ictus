@@ -36,12 +36,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
+      # uv owns the interpreter and the venv: the action's managed venv is
+      # removed first, so a toolcache/acceleration mismatch cannot fail the job
+      # before the project is touched (it previously failed at "Activating
+      # python venv" and then at `uv sync` with EEXIST on .venv).
+      # `requires-python = ">=3.12,<3.13"` keeps the tested version exact.
+      - name: install python 3.12
+        run: uv python install 3.12
+      - name: reset venv
+        run: rm -rf .venv
       - name: sync
-        run: uv sync --frozen
+        run: uv sync --frozen --python 3.12
       - name: pytest
-        run: uv run --frozen pytest -q
+        run: uv run --frozen --python 3.12 pytest -q
 
   verify-integration:
     name: integration verifier (Fleet parity)
@@ -54,8 +61,10 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@cargo-mutants
       - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
+      - name: install python 3.12
+        run: uv python install 3.12
+      - name: reset venv
+        run: rm -rf .venv
       # Runs the exact command Fleet registers as the ictus verifier, so the
       # wrapper and CI cannot drift: verify + coverage + e2e + property tests
       # (PROPTEST_CASES=1024) + mutation.

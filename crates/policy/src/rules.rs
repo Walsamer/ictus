@@ -72,6 +72,60 @@ impl DecisionProvider for RuleDecisionProvider {
             snapshot.timestamp.clone(),
         );
 
+        // INITIAL authorization is not recovery: an INITIAL snapshot carries no
+        // execution observation at all. The pinned provider previously mapped a
+        // missing `observation.category` to UNKNOWN and escalated, so an initial
+        // authorization could never produce an executable intent. It is now an
+        // explicit, fail-closed branch: no observation facts → capability
+        // request → EXECUTE_CAPABILITY. Any observation fact restores recovery
+        // semantics unchanged below.
+        let has_observation = snapshot
+            .facts
+            .iter()
+            .any(|fact| fact.key.starts_with("observation."));
+        if !has_observation {
+            if snapshot.fact_str("recovery.attempt_id").is_some() {
+                proposal.reason = Some(
+                    "initial snapshot carries a recovery attempt id; refusing to authorize".into(),
+                );
+                proposal.validate()?;
+                return Ok(proposal);
+            }
+            if snapshot.fact_str("recovery.intent_id").is_some() {
+                proposal.reason = Some(
+                    "initial snapshot carries a recovery intent id; refusing to authorize".into(),
+                );
+                proposal.validate()?;
+                return Ok(proposal);
+            }
+            match capability {
+                None => {
+                    proposal.reason =
+                        Some("initial snapshot requests no capability to execute".into());
+                }
+                Some(capability_id) => match semantic_budget_from_snapshot(snapshot) {
+                    Ok(budget) if budget.semantic_attempts > 0 => {
+                        proposal.reason = Some(format!(
+                            "initial snapshot reports {} prior semantic attempts; \
+                                 a recovery snapshot is required",
+                            budget.semantic_attempts
+                        ));
+                    }
+                    _ => {
+                        proposal.decision = DecisionKind::ExecuteCapability;
+                        proposal.capability = Some(capability_id);
+                        proposal.reason = Some(
+                            "initial authorization: no prior attempt and no failure \
+                                 observation"
+                                .into(),
+                        );
+                    }
+                },
+            }
+            proposal.validate()?;
+            return Ok(proposal);
+        }
+
         match category {
             ObservationCategory::Success => {
                 proposal.decision = DecisionKind::Abort;
@@ -271,5 +325,136 @@ mod tests {
         let first = provider.propose(&snapshot("PROCESS_CRASH", 1, 3)).unwrap();
         let second = provider.propose(&snapshot("PROCESS_CRASH", 1, 3)).unwrap();
         assert_eq!(first, second);
+    }
+}
+
+#[cfg(test)]
+mod initial_authorization_tests {
+    use super::*;
+    use ictus_core::snapshot::Fact;
+    use ictus_core::Subject;
+
+    fn base() -> StateSnapshot {
+        StateSnapshot::new(
+            "snap-initial-1",
+            "2026-10-19T00:00:00Z",
+            "software",
+            Subject::new("work_order", "WO-1"),
+        )
+        .with_fact(Fact::string("capability.id", "demo.verify"))
+    }
+
+    fn propose(snapshot: &StateSnapshot) -> DecisionProposal {
+        RuleDecisionProvider::new()
+            .propose(snapshot)
+            .expect("proposal")
+    }
+
+    #[test]
+    fn initial_snapshot_authorizes_execute_capability() {
+        let proposal = propose(&base());
+        assert_eq!(proposal.decision, DecisionKind::ExecuteCapability);
+        assert_eq!(proposal.capability.as_deref(), Some("demo.verify"));
+        assert!(proposal
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("initial authorization"));
+    }
+
+    #[test]
+    fn initial_snapshot_with_a_zero_attempt_budget_authorizes() {
+        // Also kills `attempts > 0 -> true` / `-> >= 0` mutants: a fresh budget
+        // must authorize, not escalate.
+        let snapshot = base()
+            .with_fact(Fact::integer("attempts.semantic", 0))
+            .with_fact(Fact::integer("attempts.max_semantic", 3));
+        let proposal = propose(&snapshot);
+        assert_eq!(proposal.decision, DecisionKind::ExecuteCapability);
+        assert_eq!(proposal.capability.as_deref(), Some("demo.verify"));
+    }
+
+    #[test]
+    fn initial_snapshot_without_capability_fails_closed() {
+        let mut snapshot = base();
+        snapshot.facts.clear();
+        let proposal = propose(&snapshot);
+        assert_eq!(proposal.decision, DecisionKind::Escalate);
+        assert!(proposal.capability.is_none());
+        assert!(proposal
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("no capability"));
+    }
+
+    #[test]
+    fn initial_snapshot_with_a_recovery_attempt_id_fails_closed() {
+        let snapshot = base().with_fact(Fact::string("recovery.attempt_id", "attempt-1"));
+        let proposal = propose(&snapshot);
+        assert_eq!(proposal.decision, DecisionKind::Escalate);
+        assert!(proposal
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("recovery attempt id"));
+    }
+
+    #[test]
+    fn initial_snapshot_with_a_recovery_intent_id_fails_closed() {
+        let snapshot = base().with_fact(Fact::string("recovery.intent_id", "intent-1"));
+        let proposal = propose(&snapshot);
+        assert_eq!(proposal.decision, DecisionKind::Escalate);
+        assert!(proposal
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("recovery intent id"));
+    }
+
+    #[test]
+    fn initial_snapshot_reporting_prior_attempts_fails_closed() {
+        let snapshot = base()
+            .with_fact(Fact::integer("attempts.semantic", 1))
+            .with_fact(Fact::integer("attempts.max_semantic", 3));
+        let proposal = propose(&snapshot);
+        assert_eq!(proposal.decision, DecisionKind::Escalate);
+        assert!(proposal
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("prior semantic attempts"));
+    }
+
+    #[test]
+    fn any_observation_fact_keeps_recovery_semantics() {
+        // Also kills the `starts_with("observation.")` predicate mutant: any
+        // observation fact must route to recovery, not to INITIAL.
+        for key in [
+            "observation.category",
+            "observation.message",
+            "observation.observed_at",
+        ] {
+            let snapshot = base()
+                .with_fact(Fact::string(key, "PROCESS_CRASH"))
+                .with_fact(Fact::integer("attempts.semantic", 1))
+                .with_fact(Fact::integer("attempts.max_semantic", 3));
+            let proposal = propose(&snapshot);
+            assert_ne!(
+                proposal.decision,
+                DecisionKind::ExecuteCapability,
+                "observation fact {key} must not be treated as INITIAL"
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_snapshot_is_unchanged() {
+        let snapshot = base()
+            .with_fact(Fact::string("observation.category", "WORKER_TIMEOUT"))
+            .with_fact(Fact::integer("attempts.semantic", 1))
+            .with_fact(Fact::integer("attempts.max_semantic", 3));
+        let proposal = propose(&snapshot);
+        assert_eq!(proposal.decision, DecisionKind::Reexecute);
     }
 }
