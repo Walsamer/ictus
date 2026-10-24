@@ -4,7 +4,11 @@
 Cargo.lock.bak
 
 # Python
-.venv/
+# ``.venv`` (no trailing slash) so a stray symlink is ignored too: a
+# ``.venv/``-only pattern does not match a symlink, which is how a
+# self-referential ``.venv -> <repo>/.venv`` link once got committed and
+# broke ``uv sync`` with "Too many levels of symbolic links".
+.venv
 __pycache__/
 *.py[cod]
 *.egg-info/
