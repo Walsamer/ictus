@@ -13,6 +13,8 @@ __all__ = [
     "capability_settings",
     "data_quality_settings",
     "diagnostic_settings",
+    "software_agent_settings",
+    "software_publish_settings",
 ]
 
 
@@ -81,3 +83,21 @@ def diagnostic_settings(arguments: dict[str, Any]) -> dict[str, Any]:
         "fail_until_attempt": _as_int(arguments.get("fail_until_attempt"), 0),
         "fail_classify": _as_bool(arguments.get("fail_classify"), False),
     }
+
+
+def software_agent_settings(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Settings for the fail-closed ``software.implement`` placeholder.
+
+    Arguments are deliberately ignored.  A placeholder must not accept input
+    that could be mistaken for a real implementation request.
+    """
+    return {"capability": "software.implement", "placeholder": True}
+
+
+def software_publish_settings(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Settings for the fail-closed ``software.promote`` placeholder.
+
+    Arguments are deliberately ignored, for the same reason as
+    :func:`software_agent_settings`.
+    """
+    return {"capability": "software.promote", "placeholder": True}

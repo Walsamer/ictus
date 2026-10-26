@@ -77,7 +77,7 @@ def test_execute_system_diagnose_classify_failure_maps_to_verification_failure()
 def test_unsupported_capability_fails_closed() -> None:
     with pytest.raises(UnsupportedCapability):
         bridge.execute_intent(
-            _intent("software.promote"), instance=DagsterInstance.ephemeral()
+            _intent("data.materialize"), instance=DagsterInstance.ephemeral()
         )
 
 
@@ -157,7 +157,7 @@ def test_main_returns_2_on_invalid_json(monkeypatch, capsys) -> None:
 
 
 def test_main_returns_2_on_unsupported_capability(monkeypatch, capsys) -> None:
-    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(_intent("software.promote"))))
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(_intent("data.materialize"))))
     assert bridge.main([]) == 2
     assert "error:" in capsys.readouterr().err
 

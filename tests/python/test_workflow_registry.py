@@ -8,6 +8,8 @@ from ictus_dagster.adapters.errors import UnsupportedCapability
 from ictus_dagster.adapters.intent_config import (
     CAPABILITY_WORKFLOW_CAPABILITIES,
     DATA_QUALITY_CAPABILITIES,
+    SOFTWARE_AGENT_CAPABILITIES,
+    SOFTWARE_PUBLISH_CAPABILITIES,
     SUPPORTED_CAPABILITIES,
     SYSTEM_DIAGNOSTIC_CAPABILITIES,
 )
@@ -36,6 +38,15 @@ def test_registry_is_the_source_of_truth_for_capabilities() -> None:
 
 def test_specs_and_map_agree() -> None:
     assert len(WORKFLOW_SPECS) == len(WORKFLOWS)
+
+
+def test_software_capabilities_route_to_distinct_explicit_jobs() -> None:
+    assert resolve_workflow("software.implement").job.name == "software_agent_job"
+    assert resolve_workflow("software.implement").resource_key == "software_agent_settings"
+    assert resolve_workflow("software.promote").job.name == "software_publish_job"
+    assert resolve_workflow("software.promote").resource_key == "software_publish_settings"
+    assert SOFTWARE_AGENT_CAPABILITIES == frozenset({"software.implement"})
+    assert SOFTWARE_PUBLISH_CAPABILITIES == frozenset({"software.promote"})
 
 
 def test_capability_workflow_routes_to_the_capability_job() -> None:
@@ -69,6 +80,8 @@ def test_capabilities_for_job_groups_consistently() -> None:
     assert capabilities_for_job("capability_execution_job") == CAPABILITY_WORKFLOW_CAPABILITIES
     assert capabilities_for_job("data_quality_job") == DATA_QUALITY_CAPABILITIES
     assert capabilities_for_job("system_diagnostic_job") == SYSTEM_DIAGNOSTIC_CAPABILITIES
+    assert capabilities_for_job("software_agent_job") == SOFTWARE_AGENT_CAPABILITIES
+    assert capabilities_for_job("software_publish_job") == SOFTWARE_PUBLISH_CAPABILITIES
     assert capabilities_for_job("no_such_job") == frozenset()
 
 
@@ -114,6 +127,26 @@ def test_loader_rejects_unknown_job_resource_and_settings() -> None:
         load_workflows(_raw(_entry(resource="nope")))
     with pytest.raises(WorkflowRegistryError, match="unknown settings mapper 'nope'"):
         load_workflows(_raw(_entry(settings="nope")))
+
+
+def test_loader_rejects_a_mismatched_software_route() -> None:
+    with pytest.raises(WorkflowRegistryError, match="unknown job 'not_software_agent_job'"):
+        load_workflows(
+            _raw(_entry(capability="software.implement", job="not_software_agent_job"))
+        )
+    with pytest.raises(WorkflowRegistryError, match="unknown resource 'not_publish_settings'"):
+        load_workflows(
+            _raw(
+                _entry(
+                    capability="software.promote",
+                    resource="not_publish_settings",
+                )
+            )
+        )
+    with pytest.raises(WorkflowRegistryError, match="unknown settings mapper 'not_agent'"):
+        load_workflows(
+            _raw(_entry(capability="software.implement", settings="not_agent"))
+        )
 
 
 def test_loader_rejects_a_missing_key() -> None:
