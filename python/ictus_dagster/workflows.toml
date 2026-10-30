@@ -25,6 +25,20 @@ job = "capability_execution_job"
 resource = "settings"
 settings = "capability"
 
+# Fail-closed software routes.  These expose explicit workflow names, but the
+# jobs are placeholders that always fail closed; they never report success.
+[[workflow]]
+capability = "software.implement"
+job = "software_agent_job"
+resource = "software_agent_settings"
+settings = "software_agent"
+
+[[workflow]]
+capability = "software.promote"
+job = "software_publish_job"
+resource = "software_publish_settings"
+settings = "software_publish"
+
 [[workflow]]
 capability = "data.quality_check"
 job = "data_quality_job"

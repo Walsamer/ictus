@@ -12,8 +12,16 @@ def test_code_location_loads_with_expected_jobs() -> None:
         "capability_execution_job",
         "data_quality_job",
         "system_diagnostic_job",
+        "software_agent_job",
+        "software_publish_job",
     } <= job_names
-    assert {"settings", "dq_settings", "diag_settings"} <= set(definitions.resources)
+    assert {
+        "settings",
+        "dq_settings",
+        "diag_settings",
+        "software_agent_settings",
+        "software_publish_settings",
+    } <= set(definitions.resources)
 
 
 def test_capability_job_graph_is_generic() -> None:
@@ -44,3 +52,10 @@ def test_system_diagnostic_job_graph() -> None:
         "classify_op",
         "report_op",
     }
+
+
+def test_software_placeholder_job_graphs() -> None:
+    agent = next(j for j in defs.jobs if j.name == "software_agent_job")
+    publish = next(j for j in defs.jobs if j.name == "software_publish_job")
+    assert set(agent.graph.node_dict) == {"software_agent_placeholder_op"}
+    assert set(publish.graph.node_dict) == {"software_publish_placeholder_op"}

@@ -23,9 +23,19 @@ from ictus_dagster.adapters.settings import (
     capability_settings,
     data_quality_settings,
     diagnostic_settings,
+    software_agent_settings,
+    software_publish_settings,
 )
 from ictus_dagster.jobs.capability_job import capability_execution_job
 from ictus_dagster.jobs.data_quality_job import data_quality_job
+from ictus_dagster.jobs.software_agent_job import (
+    SoftwareAgentSettings,
+    software_agent_job,
+)
+from ictus_dagster.jobs.software_publish_job import (
+    SoftwarePublishSettings,
+    software_publish_job,
+)
 from ictus_dagster.jobs.system_diagnostic_job import system_diagnostic_job
 from ictus_dagster.resources.data_quality_settings import DataQualitySettings
 from ictus_dagster.resources.diagnostic_settings import DiagnosticSettings
@@ -59,6 +69,8 @@ JOBS: dict[str, JobDefinition] = {
     "capability_execution_job": capability_execution_job,
     "data_quality_job": data_quality_job,
     "system_diagnostic_job": system_diagnostic_job,
+    "software_agent_job": software_agent_job,
+    "software_publish_job": software_publish_job,
 }
 
 # ``reconstructable`` requires the module-level factory that produced a job,
@@ -76,22 +88,36 @@ def system_diagnostic_job_factory() -> JobDefinition:
     return system_diagnostic_job
 
 
+def software_agent_job_factory() -> JobDefinition:
+    return software_agent_job
+
+
+def software_publish_job_factory() -> JobDefinition:
+    return software_publish_job
+
+
 JOB_FACTORIES: dict[str, Callable[[], JobDefinition]] = {
     "capability_execution_job": capability_execution_job_factory,
     "data_quality_job": data_quality_job_factory,
     "system_diagnostic_job": system_diagnostic_job_factory,
+    "software_agent_job": software_agent_job_factory,
+    "software_publish_job": software_publish_job_factory,
 }
 
 RESOURCES: dict[str, type] = {
     "settings": ExecutionSettings,
     "dq_settings": DataQualitySettings,
     "diag_settings": DiagnosticSettings,
+    "software_agent_settings": SoftwareAgentSettings,
+    "software_publish_settings": SoftwarePublishSettings,
 }
 
 SETTINGS_MAPPERS: dict[str, SettingsMapper] = {
     "capability": capability_settings,
     "data_quality": data_quality_settings,
     "diagnostic": diagnostic_settings,
+    "software_agent": software_agent_settings,
+    "software_publish": software_publish_settings,
 }
 
 

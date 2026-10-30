@@ -31,6 +31,9 @@ FAILED_STEP_CATEGORY = {
     "inspect_op": "PROCESS_CRASH",
     "classify_op": "VERIFICATION_FAILURE",
     "report_op": "UNKNOWN",
+    # fail-closed software routing placeholders
+    "software_agent_placeholder_op": "INTEGRATION_CONFLICT",
+    "software_publish_placeholder_op": "INTEGRATION_CONFLICT",
 }
 
 

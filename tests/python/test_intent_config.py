@@ -8,6 +8,8 @@ from ictus_dagster.adapters.intent_config import (
     CAPABILITY_WORKFLOW_CAPABILITIES,
     DATA_QUALITY_CAPABILITIES,
     KNOWN_UNSUPPORTED,
+    SOFTWARE_AGENT_CAPABILITIES,
+    SOFTWARE_PUBLISH_CAPABILITIES,
     SUPPORTED_CAPABILITIES,
     SYSTEM_DIAGNOSTIC_CAPABILITIES,
     UnsupportedCapability,
@@ -35,12 +37,17 @@ def test_capability_sets_are_disjoint_and_consistent() -> None:
     assert CAPABILITY_WORKFLOW_CAPABILITIES.isdisjoint(DATA_QUALITY_CAPABILITIES)
     assert CAPABILITY_WORKFLOW_CAPABILITIES.isdisjoint(SYSTEM_DIAGNOSTIC_CAPABILITIES)
     assert DATA_QUALITY_CAPABILITIES.isdisjoint(SYSTEM_DIAGNOSTIC_CAPABILITIES)
+    assert SOFTWARE_AGENT_CAPABILITIES == {"software.implement"}
+    assert SOFTWARE_PUBLISH_CAPABILITIES == {"software.promote"}
+    assert SOFTWARE_AGENT_CAPABILITIES.isdisjoint(SOFTWARE_PUBLISH_CAPABILITIES)
     assert SUPPORTED_CAPABILITIES == (
         CAPABILITY_WORKFLOW_CAPABILITIES
         | DATA_QUALITY_CAPABILITIES
         | SYSTEM_DIAGNOSTIC_CAPABILITIES
+        | SOFTWARE_AGENT_CAPABILITIES
+        | SOFTWARE_PUBLISH_CAPABILITIES
     )
-    assert "software.promote" in KNOWN_UNSUPPORTED
+    assert {"software.implement", "software.promote"} <= KNOWN_UNSUPPORTED
 
 
 # -- capability workflow ----------------------------------------------------

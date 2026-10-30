@@ -17,6 +17,8 @@ from ictus_dagster.adapters.settings import (
     capability_settings,
     data_quality_settings,
     diagnostic_settings,
+    software_agent_settings,
+    software_publish_settings,
 )
 from ictus_dagster.adapters.workflow_registry import (
     SUPPORTED_CAPABILITIES,
@@ -28,22 +30,34 @@ __all__ = [
     "CAPABILITY_WORKFLOW_CAPABILITIES",
     "DATA_QUALITY_CAPABILITIES",
     "SYSTEM_DIAGNOSTIC_CAPABILITIES",
+    "SOFTWARE_AGENT_CAPABILITIES",
+    "SOFTWARE_PUBLISH_CAPABILITIES",
     "SUPPORTED_CAPABILITIES",
     "KNOWN_UNSUPPORTED",
     "capability_settings",
     "data_quality_settings",
     "diagnostic_settings",
+    "software_agent_settings",
+    "software_publish_settings",
     "settings_from_intent",
     "data_quality_settings_from_intent",
     "diagnostic_settings_from_intent",
+    "software_agent_settings_from_intent",
+    "software_publish_settings_from_intent",
 ]
 
 # Capabilities executed by each workflow job (derived from the registry).
 CAPABILITY_WORKFLOW_CAPABILITIES = capabilities_for_job("capability_execution_job")
 DATA_QUALITY_CAPABILITIES = capabilities_for_job("data_quality_job")
 SYSTEM_DIAGNOSTIC_CAPABILITIES = capabilities_for_job("system_diagnostic_job")
+SOFTWARE_AGENT_CAPABILITIES = capabilities_for_job("software_agent_job")
+SOFTWARE_PUBLISH_CAPABILITIES = capabilities_for_job("software_publish_job")
 
-# Capabilities that are recognised but must be executed by a different backend.
+# Capabilities that are recognised but must not be executed by the generic
+# capability workflow.  The two software capabilities now have explicit,
+# fail-closed routes (see `workflows.toml`), yet the generic mapper must keep
+# rejecting them so an intent can never be silently executed as a generic
+# capability.
 KNOWN_UNSUPPORTED = {
     "software.implement",
     "software.promote",
@@ -92,3 +106,23 @@ def diagnostic_settings_from_intent(payload: dict[str, Any]) -> dict[str, Any]:
             f"capability '{capability}' is not a system-diagnostics capability"
         )
     return diagnostic_settings(_arguments(payload))
+
+
+def software_agent_settings_from_intent(payload: dict[str, Any]) -> dict[str, Any]:
+    """Resource config for the fail-closed ``software.implement`` placeholder."""
+    capability = str(payload.get("capability", ""))
+    if capability not in SOFTWARE_AGENT_CAPABILITIES:
+        raise UnsupportedCapability(
+            f"capability '{capability}' is not a software-agent capability"
+        )
+    return software_agent_settings(_arguments(payload))
+
+
+def software_publish_settings_from_intent(payload: dict[str, Any]) -> dict[str, Any]:
+    """Resource config for the fail-closed ``software.promote`` placeholder."""
+    capability = str(payload.get("capability", ""))
+    if capability not in SOFTWARE_PUBLISH_CAPABILITIES:
+        raise UnsupportedCapability(
+            f"capability '{capability}' is not a software-publish capability"
+        )
+    return software_publish_settings(_arguments(payload))
