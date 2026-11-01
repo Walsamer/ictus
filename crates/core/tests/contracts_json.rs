@@ -177,6 +177,8 @@ const PENDING_ENVELOPE_JSON: &str =
     include_str!("../../../examples/decision-envelope.pending.json");
 const ESCALATED_ENVELOPE_JSON: &str =
     include_str!("../../../examples/decision-envelope.escalated.json");
+const ABORTED_ENVELOPE_JSON: &str =
+    include_str!("../../../examples/decision-envelope.aborted.json");
 
 #[test]
 fn initial_context_fixture_has_no_observation_and_validates() {
@@ -250,6 +252,20 @@ fn escalated_envelope_fixture_is_v2_without_a_capability() {
     assert_eq!(envelope.snapshot.digest.len(), 64);
     let json = serde_json::to_value(&envelope).unwrap();
     assert!(json.get("capability_validation").is_none(), "{json}");
+}
+
+#[test]
+fn aborted_envelope_fixture_is_v2_without_a_capability() {
+    // `abort_on_exhaustion` is the other non-executing decision the recovery
+    // provider can reach; the second reproduction of the defect.
+    let envelope: DecisionEnvelope = serde_json::from_str(ABORTED_ENVELOPE_JSON).unwrap();
+    envelope.validate().unwrap();
+    assert_eq!(envelope.schema_version, ENVELOPE_SCHEMA_VERSION);
+    assert_eq!(envelope.proposal.decision, DecisionKind::Abort);
+    assert_eq!(envelope.outcome, EnvelopeOutcome::NoExecution);
+    assert!(envelope.capability_validation.is_none());
+    assert!(envelope.intent.is_none());
+    assert_eq!(envelope.policy.verdict, PolicyDecisionKind::Allow);
 }
 
 #[test]

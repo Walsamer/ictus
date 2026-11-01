@@ -480,3 +480,37 @@ fn a_refused_decision_without_a_capability_is_denied_not_no_execution() {
     assert!(envelope.capability_validation.is_none());
     assert_eq!(envelope.schema_version, 2);
 }
+
+#[test]
+fn a_refused_decision_without_a_capability_still_hands_out_a_valid_envelope() {
+    // The refusal paths must not slip an artifact past the trust boundary: a
+    // proposal that carries a route as well as a decision with no capability is
+    // refused (route constraints are only valid for ROUTE), and the envelope
+    // records the refusal without the route.
+    let context = context();
+    let mut proposal = no_capability_proposal(DecisionKind::Escalate);
+    proposal.route = Some(ictus_core::RouteConstraints::new().with_preferred_backend("backend.b"));
+    let registry = registry();
+    let trusted = compose_with(
+        &context,
+        snapshot(),
+        &proposal,
+        &registry,
+        &[],
+        "2026-10-01T01:00:00Z",
+    );
+    let envelope = trusted.envelope();
+    envelope.validate().unwrap();
+    assert_eq!(envelope.outcome, EnvelopeOutcome::Denied);
+    assert_eq!(envelope.policy.verdict, PolicyDecisionKind::Deny);
+    assert!(envelope.route.is_none());
+    assert!(envelope.capability_validation.is_none());
+    assert_eq!(envelope.schema_version, 2);
+    // The refusal still carries the full binding, so it is as verifiable as any
+    // other envelope.
+    assert_eq!(
+        envelope.validation.proposal_digest,
+        proposal_digest(&proposal)
+    );
+    assert_eq!(envelope.validation.context_id, context.context_id);
+}

@@ -119,31 +119,31 @@ impl LocalPolicyComposition {
         );
 
         if self.policy_version != DEFAULT_POLICY_VERSION {
-            return Ok(self.denied(
+            return self.denied(
                 &request,
                 validation,
                 format!("unknown policy version '{}'", self.policy_version),
-            ));
+            );
         }
         if let Err(error) = request.context.validate() {
-            return Ok(self.invalid(&request, validation, format!("invalid context: {error}")));
+            return self.invalid(&request, validation, format!("invalid context: {error}"));
         }
         if request.snapshot.snapshot_id != request.context.snapshot.snapshot_id
             || request.snapshot.revision != request.context.revision
             || request.proposal.subject != request.context.snapshot.subject
         {
-            return Ok(self.invalid(
+            return self.invalid(
                 &request,
                 validation,
                 "context, snapshot and proposal subject binding mismatch".to_string(),
-            ));
+            );
         }
         if !canonical_utc(request.expiry) || request.expiry <= validated_at.as_str() {
-            return Ok(self.invalid(
+            return self.invalid(
                 &request,
                 validation,
                 "expiry must be canonical UTC and later than validation time".to_string(),
-            ));
+            );
         }
 
         let capability = request.capabilities.get(&capability_id);
@@ -234,7 +234,13 @@ impl LocalPolicyComposition {
                 policy.decision,
             ),
             capability_validation,
-            route: request.proposal.route.clone(),
+            // A route constrains a capability's execution; a decision that
+            // carries none cannot travel with one, whatever the proposal said.
+            route: if requires_capability {
+                request.proposal.route.clone()
+            } else {
+                None
+            },
             approvals: approval_bindings,
             grants: qualified,
             validation,
@@ -394,7 +400,7 @@ impl LocalPolicyComposition {
         request: &ValidationRequest<'_>,
         validation: ValidationBinding,
         reason: String,
-    ) -> TrustedDecision {
+    ) -> Result<TrustedDecision, PortError> {
         self.result(
             request,
             validation,
@@ -410,7 +416,7 @@ impl LocalPolicyComposition {
         request: &ValidationRequest<'_>,
         validation: ValidationBinding,
         reason: String,
-    ) -> TrustedDecision {
+    ) -> Result<TrustedDecision, PortError> {
         self.result(
             request,
             validation,
@@ -429,44 +435,53 @@ impl LocalPolicyComposition {
         verdict: PolicyDecisionKind,
         admitted: bool,
         reason: String,
-    ) -> TrustedDecision {
-        TrustedDecision {
-            envelope: DecisionEnvelope {
-                schema_version: DecisionEnvelope::schema_version_for(request.proposal.decision),
-                envelope_id: format!("envelope:{}", request.proposal.proposal_id),
-                subject: request.context.snapshot.subject.clone(),
-                snapshot: request.snapshot.clone(),
-                proposal: ProposalBinding::new(
-                    request.proposal.proposal_id.clone(),
-                    request.proposal.schema_version,
-                    request.proposal.decision,
-                ),
-                policy: PolicyBinding::new(
-                    format!("policy:{}", request.proposal.proposal_id),
-                    &self.policy_version,
-                    verdict,
-                ),
-                capability_validation: request.proposal.decision.requires_capability().then(|| {
-                    CapabilityValidation::new(
-                        request
-                            .proposal
-                            .capability
-                            .clone()
-                            .unwrap_or_else(|| "none".to_string()),
-                        admitted,
-                        false,
-                        reason,
-                    )
-                }),
-                route: request.proposal.route.clone(),
-                approvals: Vec::new(),
-                grants: Vec::new(),
-                validation,
-                outcome,
-                expiry: request.expiry.to_string(),
-                intent: None,
+    ) -> Result<TrustedDecision, PortError> {
+        let requires_capability = request.proposal.decision.requires_capability();
+        let envelope = DecisionEnvelope {
+            schema_version: DecisionEnvelope::schema_version_for(request.proposal.decision),
+            envelope_id: format!("envelope:{}", request.proposal.proposal_id),
+            subject: request.context.snapshot.subject.clone(),
+            snapshot: request.snapshot.clone(),
+            proposal: ProposalBinding::new(
+                request.proposal.proposal_id.clone(),
+                request.proposal.schema_version,
+                request.proposal.decision,
+            ),
+            policy: PolicyBinding::new(
+                format!("policy:{}", request.proposal.proposal_id),
+                &self.policy_version,
+                verdict,
+            ),
+            capability_validation: requires_capability.then(|| {
+                CapabilityValidation::new(
+                    request
+                        .proposal
+                        .capability
+                        .clone()
+                        .unwrap_or_else(|| "none".to_string()),
+                    admitted,
+                    false,
+                    reason,
+                )
+            }),
+            // A route is a constraint on a capability's execution; a decision
+            // that carries none cannot travel with one.
+            route: if requires_capability {
+                request.proposal.route.clone()
+            } else {
+                None
             },
-        }
+            approvals: Vec::new(),
+            grants: Vec::new(),
+            validation,
+            outcome,
+            expiry: request.expiry.to_string(),
+            intent: None,
+        };
+        // The trusted boundary hands out nothing it has not validated, refusal
+        // paths included.
+        envelope.validate()?;
+        Ok(TrustedDecision { envelope })
     }
 }
 
