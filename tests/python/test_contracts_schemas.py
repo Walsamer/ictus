@@ -7,6 +7,7 @@ is `crates/core/tests/contracts_json.rs`.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -38,11 +39,13 @@ SCHEMA_EXAMPLE_PAIRS = [
     ("decision-envelope.schema.json", "decision-envelope.granted.json"),
     ("decision-envelope.schema.json", "decision-envelope.denied.json"),
     ("decision-envelope.schema.json", "decision-envelope.pending.json"),
+    ("decision-envelope.schema.json", "decision-envelope.escalated.json"),
 ]
 
-# Only the DecisionProposal contract was bumped (v2, generic semantic
-# vocabulary); its v1 payloads remain accepted. Every other contract stays v1.
+# Only the DecisionProposal and DecisionEnvelope contracts carry more than one
+# version; every other contract stays v1.
 DECISION_PROPOSAL_VERSIONS = [1, 2]
+DECISION_ENVELOPE_VERSIONS = [1, 2]
 
 
 def _schemas() -> dict[str, dict]:
@@ -78,6 +81,8 @@ def test_all_contracts_are_versioned() -> None:
         assert "schema_version" in properties, f"{name} lacks schema_version"
         if name == "proposal.schema.json":
             assert properties["schema_version"]["enum"] == DECISION_PROPOSAL_VERSIONS, name
+        elif name == "decision-envelope.schema.json":
+            assert properties["schema_version"]["enum"] == DECISION_ENVELOPE_VERSIONS, name
         else:
             assert properties["schema_version"] == {"const": 1}, name
 
@@ -281,6 +286,85 @@ def test_no_route_envelope_uses_generic_route_constraints() -> None:
     _validator("decision-envelope.schema.json").validate(payload)
 
     payload["route"] = {"preferred_backend": ""}
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_escalation_envelope_carries_no_capability() -> None:
+    # The decision where a human authorizes something crosses the same binding as
+    # an execution decision, with no capability claim at all.
+    payload = _example("decision-envelope.escalated.json")
+    assert payload["schema_version"] == 2
+    assert payload["proposal"]["decision"] == "ESCALATE"
+    assert payload["outcome"] == "NO_EXECUTION"
+    assert "capability_validation" not in payload
+    assert "intent" not in payload
+    assert re.fullmatch(r"[0-9a-f]{64}", payload["validation"]["proposal_digest"])
+    _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_a_capability_bearing_envelope_requires_capability_validation() -> None:
+    payload = _example("decision-envelope.executable.json")
+    del payload["capability_validation"]
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_a_capability_claim_on_a_decision_that_carries_none_is_rejected() -> None:
+    # A capability on ESCALATE/ABORT/DECOMPOSE is exactly the self-asserted
+    # validation the contract refuses to model.
+    payload = _example("decision-envelope.escalated.json")
+    payload["capability_validation"] = _example("decision-envelope.executable.json")[
+        "capability_validation"
+    ]
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_schema_version_1_cannot_describe_a_decision_without_a_capability() -> None:
+    payload = _example("decision-envelope.escalated.json")
+    payload["schema_version"] = 1
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_no_execution_is_not_a_licence_to_carry_an_intent_or_capability() -> None:
+    payload = _example("decision-envelope.escalated.json")
+    payload["intent"] = _example("decision-envelope.executable.json")["intent"]
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_no_execution_is_only_for_a_decision_that_carries_no_capability() -> None:
+    payload = _example("decision-envelope.executable.json")
+    del payload["intent"]
+    payload["outcome"] = "NO_EXECUTION"
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_a_decision_without_a_capability_binds_no_approvals_or_route() -> None:
+    escalation = _example("decision-envelope.escalated.json")
+
+    with_approval = dict(escalation)
+    with_approval["approvals"] = [{"name": "human", "satisfied": True}]
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(with_approval)
+
+    with_route = dict(escalation)
+    with_route["route"] = {"preferred_backend": "backend.b"}
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(with_route)
+
+    with_grant = dict(escalation)
+    with_grant["grants"] = _example("decision-envelope.granted.json")["grants"]
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(with_grant)
+
+
+def test_an_unknown_envelope_version_is_rejected() -> None:
+    payload = _example("decision-envelope.executable.json")
+    payload["schema_version"] = 3
     with pytest.raises(ValidationError):
         _validator("decision-envelope.schema.json").validate(payload)
 
