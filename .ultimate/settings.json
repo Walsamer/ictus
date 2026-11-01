@@ -6,7 +6,11 @@
   },
   "lander": {
     "checks": [
-      { "command": "./scripts/verify.sh", "timeout": 900 }
+      { "command": "./scripts/verify.sh", "timeout": 900 },
+      { "command": "./scripts/coverage.sh", "timeout": 2400 },
+      { "command": "./scripts/e2e_rust_dagster.sh", "timeout": 900 },
+      { "command": "PROPTEST_CASES=1024 cargo test -p ictus-core --test properties", "timeout": 900 },
+      { "command": "./scripts/mutants.sh", "timeout": 3600 }
     ]
   }
 }
