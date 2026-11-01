@@ -36,9 +36,18 @@ FAILED_STEP_CATEGORY = {
     "inspect_op": "PROCESS_CRASH",
     "classify_op": "VERIFICATION_FAILURE",
     "report_op": "UNKNOWN",
-    # fail-closed software routing placeholders
+    # fail-closed software routing placeholders (pre-seam step names)
     "software_agent_placeholder_op": "INTEGRATION_CONFLICT",
     "software_publish_placeholder_op": "INTEGRATION_CONFLICT",
+    # software.implement / software.promote seam skeleton
+    "software_agent_prepare_op": "INTEGRATION_CONFLICT",
+    "software_agent_execute_op": "PROCESS_CRASH",
+    "software_agent_verify_op": "VERIFICATION_FAILURE",
+    "software_agent_finalize_op": "UNKNOWN",
+    "software_publish_prepare_op": "INTEGRATION_CONFLICT",
+    "software_publish_execute_op": "PROCESS_CRASH",
+    "software_publish_verify_op": "VERIFICATION_FAILURE",
+    "software_publish_finalize_op": "UNKNOWN",
 }
 
 
@@ -46,6 +55,47 @@ def _category_for_failed_step(step: str | None) -> str:
     if not step:
         return "UNKNOWN"
     return FAILED_STEP_CATEGORY.get(step, "UNKNOWN")
+
+
+def seam_evidence_items(seam_evidence: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Translate the runtime seam's summary into contract evidence entries.
+
+    The seam already reported structured facts (changed paths, patch digest and
+    size, exit/termination status) rather than a log tail; this only restates
+    them in the ``ExecutionResult`` evidence shape, and reports nothing when no
+    seam was configured.
+    """
+    if not seam_evidence:
+        return []
+    changed_paths = seam_evidence.get("changed_paths") or []
+    patch: dict[str, Any] = {
+        "kind": "runtime_patch",
+        "uri": "seam://patch",
+        "note": (
+            f"changed_paths={','.join(str(path) for path in changed_paths) or 'none'}; "
+            f"patch_bytes={seam_evidence.get('patch_bytes', 0)}"
+        ),
+    }
+    digest = seam_evidence.get("patch_digest")
+    if isinstance(digest, str) and digest.startswith("sha256:"):
+        patch["sha256"] = digest[len("sha256:") :]
+    termination = seam_evidence.get("termination") or {}
+    exit_status = seam_evidence.get("exit_status") or {}
+    return [
+        patch,
+        {
+            "kind": "runtime_exit",
+            "uri": "seam://exit",
+            "note": (
+                f"outcome={seam_evidence.get('outcome', 'unknown')}; "
+                f"exit_code={exit_status.get('code')}; "
+                f"signal={exit_status.get('signal')}; "
+                f"termination_confirmed={termination.get('confirmed')}; "
+                f"steps_used={seam_evidence.get('steps_used', 0)}; "
+                f"duration_seconds={seam_evidence.get('duration_seconds', 0)}"
+            ),
+        },
+    ]
 
 
 def execution_result_from_run(
@@ -59,6 +109,7 @@ def execution_result_from_run(
     started_at: str | None = None,
     finished_at: str | None = None,
     evidence: list[dict[str, Any]] | None = None,
+    seam_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a validated ExecutionResult payload from raw run facts."""
     normalized_status = (run_status or "").upper()
@@ -83,7 +134,10 @@ def execution_result_from_run(
         "intent_id": intent_id,
         "status": status,
         "observation": {"category": category},
-        "evidence": list(evidence or []),
+        "evidence": [
+            *list(evidence or []),
+            *seam_evidence_items(seam_evidence),
+        ],
     }
     if started_at:
         payload["started_at"] = started_at

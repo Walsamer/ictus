@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Walsamer/ictus/contracts/runtime-seam.schema.json",
+  "title": "Ictus runtime seam configuration",
+  "description": "Operator-owned configuration that selects the runtime backend for the software execution jobs. Ictus holds the path to this document, validates it against this schema and resolves the backend by name at run time; it never imports the backend, never reads the workspace descriptor and never trusts a probe result silently. An unconfigured seam keeps the fail-closed placeholder behaviour. Readers fail closed on an unknown schema_version, an unknown field and any out-of-bounds value.",
+  "type": "object",
+  "required": ["schema_version", "backend", "workspace", "bounds"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Version of this configuration contract. A consumer pins it and fails closed on drift."
+    },
+    "backend": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$",
+      "description": "The runtime backend, named as 'module:attribute'. Ictus imports it lazily by name and calls the named attribute with no arguments; the returned object must implement the seam port (describe_workspace, execute, verify). No specific runtime, vendor, binary or model is named in or imported by Ictus."
+    },
+    "workspace": {
+      "type": "object",
+      "required": ["descriptor"],
+      "additionalProperties": false,
+      "description": "The workspace, held by reference only.",
+      "properties": {
+        "descriptor": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to the operator-owned workspace descriptor, which declares the runtime's executable, version token and probe. Ictus passes this path through and never opens, parses or validates the file; the runtime reports its version and probe result back as evidence. A relative path resolves against this configuration file's directory."
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "required": ["write_scope", "wall_clock_seconds", "step_budget"],
+      "additionalProperties": false,
+      "description": "The attempt's bounds, passed to the backend as data and re-checked against the evidence the backend returns.",
+      "properties": {
+        "write_scope": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Paths the attempt may write. Containment is syntactic and default-deny: a reported changed path is in scope when it equals an entry or continues it with '/'. A changed path outside the scope fails the attempt closed."
+        },
+        "wall_clock_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 86400,
+          "description": "Wall-clock budget for one attempt. Once it elapses the attempt's process group is terminated (SIGTERM, then SIGKILL) and its death is confirmed before the attempt is reported as timed out."
+        },
+        "step_budget": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "description": "Semantic steps one attempt may take. Step retries stay inside the single attempt; this budget bounds them."
+        }
+      }
+    }
+  }
+}

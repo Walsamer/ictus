@@ -28,6 +28,7 @@ from ictus_dagster.submission import (
     SubmissionError,
     cancel_receipt,
     query_receipt,
+    seam_evidence_from_run,
     submit_intent,
 )
 
@@ -97,9 +98,11 @@ def execute_intent(
         intent_id=payload["intent_id"],
         success=bool(result.success),
         failed_step=failed_step,
+        failure_category=failure_category,
         started_at=started_at,
         finished_at=finished_at,
         evidence=evidence,
+        seam_evidence=seam_evidence_from_run(dagster_instance, result.run_id),
     )
 
 

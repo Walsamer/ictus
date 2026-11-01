@@ -24,6 +24,8 @@ during a migration, and new wire versions change only when required.
 | ExecutionReceipt | `execution-receipt.schema.json` | `ictus_ports::ExecutionReceipt` | durable submit acknowledgement |
 | ExecutionStatus | `execution-status.schema.json` | — (read model) | durable query/cancel reconciliation |
 | ExecutionResult | `execution-result.schema.json` | `ictus_core::ExecutionResult` | bridge output |
+| RuntimeSeamConfig | `runtime-seam.schema.json` | — (execution backend only) | `ictus_dagster.seam.config.load_seam_config` |
+| RuntimeEvidence | `runtime-evidence.schema.json` | — (execution backend only) | `ictus_dagster.seam.evidence.validate_evidence` |
 
 ## Conventions
 
@@ -90,6 +92,30 @@ directly onto `state` + `result`; `DurableExecutionBackend::cancel` returns `()`
 and therefore ignores the optional `cancellation` detail. No adapter implements
 that port over the JSON transport yet, so adding `ExecutionStatus` breaks no
 consumer.
+
+### RuntimeSeamConfig and RuntimeEvidence (v1)
+
+The two runtime-seam contracts are execution-side and versioned independently at
+`schema_version: 1`. They are how a runtime is bound to the software execution
+jobs without Ictus importing it:
+
+- `RuntimeSeamConfig` is an **operator-owned** document. Ictus receives its
+  *path* (a per-run resource setting or an intent argument) and validates it
+  against this schema, failing closed on an unknown `schema_version`, an unknown
+  field or an out-of-bounds budget. It names the backend as `module:attribute`,
+  holds the workspace by reference (a descriptor path Ictus never reads) and
+  bounds the attempt (write scope, wall clock, step budget).
+- `RuntimeEvidence` is what that backend returns from one attempt: the changed
+  paths, patch digest and size, step count, exit/termination status and a typed
+  failure kind. Ictus validates the shape and the bounds, requires a requested
+  termination to be confirmed, and restates the facts as `ExecutionResult`
+  evidence (`runtime_patch`, `runtime_exit`).
+
+Unconfigured, both software routes keep their fail-closed placeholder failure
+(`INTEGRATION_CONFLICT`). The Python validators in `ictus_dagster/seam/` mirror
+these schemas without a runtime dependency, and
+`tests/python/test_runtime_seam_contracts.py` checks that the schema and the
+validators agree on the same corpus of documents.
 
 ### DecisionProposal v1 -> v2
 

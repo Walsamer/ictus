@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Walsamer/ictus/contracts/runtime-evidence.schema.json",
+  "title": "Ictus runtime seam attempt evidence",
+  "description": "What a runtime backend returns from one bounded attempt through the seam port. It is structured evidence — changed paths, patch digest and size, exit/termination status and a typed failure kind — enough to build a result without reading a log tail. Ictus validates this document's shape and fails the attempt closed on drift; unknown fields are preserved for the runtime's own diagnostics.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "outcome",
+    "failure_kind",
+    "changed_paths",
+    "patch_digest",
+    "patch_bytes",
+    "steps_used",
+    "exit_status",
+    "termination",
+    "duration_seconds"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "outcome": {
+      "type": "string",
+      "enum": ["succeeded", "failed", "cancelled", "timed_out"]
+    },
+    "failure_kind": {
+      "description": "Null exactly when the outcome is 'succeeded'; otherwise a typed failure kind from the vocabulary below.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "enum": [
+            "CONFIGURATION",
+            "WORKSPACE_PROBE_FAILED",
+            "BACKEND_ERROR",
+            "SCOPE_VIOLATION",
+            "STEP_BUDGET_EXCEEDED",
+            "WALL_CLOCK_EXCEEDED",
+            "SUPERVISION_VIOLATION",
+            "TERMINATION_UNCONFIRMED",
+            "PROCESS_EXIT",
+            "CANCEL_REQUESTED",
+            "RUNTIME_VERIFICATION_FAILED"
+          ]
+        }
+      ]
+    },
+    "changed_paths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Paths the attempt changed, as the runtime reports them."
+    },
+    "patch_digest": {
+      "description": "Digest of the attempt's patch, or null when it produced none.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      ]
+    },
+    "patch_bytes": { "type": "integer", "minimum": 0 },
+    "steps_used": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Semantic steps the attempt took, counted through the seam's execution control."
+    },
+    "exit_status": {
+      "type": "object",
+      "required": ["code", "signal"],
+      "properties": {
+        "code": { "type": ["integer", "null"] },
+        "signal": { "type": ["string", "null"] }
+      }
+    },
+    "termination": {
+      "type": "object",
+      "required": ["requested", "signals", "confirmed"],
+      "properties": {
+        "requested": { "type": "boolean" },
+        "signals": { "type": "array", "items": { "type": "string" } },
+        "confirmed": {
+          "type": "boolean",
+          "description": "Whether the process group's death was confirmed. Ictus refuses an attempt that reports a requested termination it could not confirm: a supervisor holding writer exclusion relies on that."
+        }
+      }
+    },
+    "duration_seconds": { "type": "number", "minimum": 0 }
+  }
+}
