@@ -21,6 +21,14 @@ use crate::{
 /// Stable identifier of this implementation's policy semantics.
 pub const DEFAULT_POLICY_VERSION: &str = "ictus.default.v1";
 
+/// `validation.capability_version` for a decision that carries no capability.
+///
+/// The field is required and non-empty in both envelope versions; for an
+/// `ESCALATE`, `ABORT` or `DECOMPOSE` decision there is no capability whose
+/// version could be bound, and saying "not-applicable" is the honest record
+/// rather than claiming an unregistered capability was being validated.
+pub const NO_CAPABILITY_VERSION: &str = "not-applicable";
+
 /// The inputs that are composed at the trusted local boundary.
 pub struct ValidationRequest<'a> {
     pub context: &'a DecisionContext,
@@ -87,14 +95,22 @@ impl LocalPolicyComposition {
     }
 
     pub fn validate(&self, request: ValidationRequest<'_>) -> Result<TrustedDecision, PortError> {
+        // The decision kind alone decides whether a capability is in play, so it
+        // alone decides whether this envelope carries `capability_validation`
+        // and which contract version it is written under.
+        let requires_capability = request.proposal.decision.requires_capability();
         let proposal_digest = proposal_digest(request.proposal)?;
         let validated_at = request.proposal.proposed_at.clone();
         let capability_id = request.proposal.capability.clone().unwrap_or_default();
-        let capability_version = request
-            .capabilities
-            .get(&capability_id)
-            .map(|capability| capability.version)
-            .unwrap_or_else(|| "unregistered".to_string());
+        let capability_version = if requires_capability {
+            request
+                .capabilities
+                .get(&capability_id)
+                .map(|capability| capability.version)
+                .unwrap_or_else(|| "unregistered".to_string())
+        } else {
+            NO_CAPABILITY_VERSION.to_string()
+        };
         let validation = ValidationBinding::new(
             request.context.context_id.clone(),
             proposal_digest.clone(),
@@ -131,30 +147,41 @@ impl LocalPolicyComposition {
         }
 
         let capability = request.capabilities.get(&capability_id);
-        let required = capability
-            .as_ref()
-            .map(required_approvals)
-            .unwrap_or_default();
-        let (qualified, grant_reasons): (Vec<_>, Vec<_>) = request
-            .grants
-            .iter()
-            .cloned()
-            .map(|grant| {
-                match grant_reason(
-                    &grant,
-                    request.context,
-                    &capability_id,
-                    &self.policy_version,
-                    &validated_at,
-                ) {
-                    Ok(()) => Ok(grant),
-                    Err(reason) => Err(format!("grant '{}' rejected: {reason}", grant.grant_id)),
-                }
-            })
-            .partition(Result::is_ok);
-        let qualified: Vec<ApprovalGrant> = qualified.into_iter().filter_map(Result::ok).collect();
-        let grant_reasons: Vec<String> =
-            grant_reasons.into_iter().filter_map(Result::err).collect();
+        let required = if requires_capability {
+            capability
+                .as_ref()
+                .map(required_approvals)
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        // A grant names a capability, a revision and a policy version; with no
+        // capability to bind there is nothing a grant could authorize.
+        let mut qualified: Vec<ApprovalGrant> = Vec::new();
+        let mut grant_reasons: Vec<String> = Vec::new();
+        if requires_capability {
+            let (accepted, rejected): (Vec<_>, Vec<_>) = request
+                .grants
+                .iter()
+                .cloned()
+                .map(|grant| {
+                    match grant_reason(
+                        &grant,
+                        request.context,
+                        &capability_id,
+                        &self.policy_version,
+                        &validated_at,
+                    ) {
+                        Ok(()) => Ok(grant),
+                        Err(reason) => {
+                            Err(format!("grant '{}' rejected: {reason}", grant.grant_id))
+                        }
+                    }
+                })
+                .partition(Result::is_ok);
+            qualified = accepted.into_iter().filter_map(Result::ok).collect();
+            grant_reasons = rejected.into_iter().filter_map(Result::err).collect();
+        }
         let approvals = TokenApprovalProvider::new(
             qualified
                 .iter()
@@ -173,16 +200,18 @@ impl LocalPolicyComposition {
             policy.decision,
             PolicyDecisionKind::Allow | PolicyDecisionKind::Modify
         );
-        let capability_validation = CapabilityValidation::new(
-            capability_id.clone(),
-            admitted,
-            permitted,
-            if policy.reasons.is_empty() {
-                "validated".to_string()
-            } else {
-                policy.reasons.join("; ")
-            },
-        );
+        let capability_validation = requires_capability.then(|| {
+            CapabilityValidation::new(
+                capability_id.clone(),
+                admitted,
+                permitted,
+                if policy.reasons.is_empty() {
+                    "validated".to_string()
+                } else {
+                    policy.reasons.join("; ")
+                },
+            )
+        });
         let approval_bindings = required
             .iter()
             .map(|name| {
@@ -190,7 +219,7 @@ impl LocalPolicyComposition {
             })
             .collect();
         let mut envelope = DecisionEnvelope {
-            schema_version: ictus_core::ENVELOPE_SCHEMA_VERSION,
+            schema_version: DecisionEnvelope::schema_version_for(request.proposal.decision),
             envelope_id: format!("envelope:{}", request.proposal.proposal_id),
             subject: request.context.snapshot.subject.clone(),
             snapshot: request.snapshot,
@@ -209,7 +238,13 @@ impl LocalPolicyComposition {
             approvals: approval_bindings,
             grants: qualified,
             validation,
-            outcome: EnvelopeOutcome::from_verdict(policy.decision, true),
+            // A permitted decision with no capability is not an executable one:
+            // it stands, and nothing reaches the execution backend.
+            outcome: if !requires_capability && permitted {
+                EnvelopeOutcome::NoExecution
+            } else {
+                EnvelopeOutcome::from_verdict(policy.decision, true)
+            },
             expiry: request.expiry.to_string(),
             intent: None,
         };
@@ -239,21 +274,9 @@ impl LocalPolicyComposition {
             }
         }
         if !grant_reasons.is_empty() {
-            envelope.capability_validation.reason = format!(
-                "{}; {}",
-                envelope.capability_validation.reason,
-                grant_reasons.join("; ")
-            );
-        }
-        // Non-executing generic decisions are valid policy results but cannot
-        // be represented as an executable intent contract.
-        if matches!(
-            policy.decision,
-            PolicyDecisionKind::Allow | PolicyDecisionKind::Modify
-        ) && envelope.intent.is_none()
-        {
-            envelope.outcome = EnvelopeOutcome::Invalid;
-            envelope.capability_validation.permitted = false;
+            if let Some(validation) = envelope.capability_validation.as_mut() {
+                validation.reason = format!("{}; {}", validation.reason, grant_reasons.join("; "));
+            }
         }
         envelope.validate()?;
         Ok(TrustedDecision { envelope })
@@ -343,19 +366,23 @@ impl LocalPolicyComposition {
             RouteSelection::NoRoute(no_route) => {
                 envelope.outcome = EnvelopeOutcome::NoRoute;
                 envelope.intent = None;
-                envelope.capability_validation.reason = format!(
-                    "{}; no route ({:?}): {}",
-                    envelope.capability_validation.reason, no_route.reason, no_route.detail
-                );
+                if let Some(validation) = envelope.capability_validation.as_mut() {
+                    validation.reason = format!(
+                        "{}; no route ({:?}): {}",
+                        validation.reason, no_route.reason, no_route.detail
+                    );
+                }
             }
             RouteSelection::RequireApproval(approval) => {
                 envelope.outcome = EnvelopeOutcome::Pending;
                 envelope.policy.verdict = PolicyDecisionKind::RequireApproval;
                 envelope.intent = None;
-                envelope.capability_validation.reason = format!(
-                    "{}; route approval required: {}",
-                    envelope.capability_validation.reason, approval.reason
-                );
+                if let Some(validation) = envelope.capability_validation.as_mut() {
+                    validation.reason = format!(
+                        "{}; route approval required: {}",
+                        validation.reason, approval.reason
+                    );
+                }
             }
         }
         envelope.validate()?;
@@ -405,7 +432,7 @@ impl LocalPolicyComposition {
     ) -> TrustedDecision {
         TrustedDecision {
             envelope: DecisionEnvelope {
-                schema_version: ictus_core::ENVELOPE_SCHEMA_VERSION,
+                schema_version: DecisionEnvelope::schema_version_for(request.proposal.decision),
                 envelope_id: format!("envelope:{}", request.proposal.proposal_id),
                 subject: request.context.snapshot.subject.clone(),
                 snapshot: request.snapshot.clone(),
@@ -419,16 +446,18 @@ impl LocalPolicyComposition {
                     &self.policy_version,
                     verdict,
                 ),
-                capability_validation: CapabilityValidation::new(
-                    request
-                        .proposal
-                        .capability
-                        .clone()
-                        .unwrap_or_else(|| "none".to_string()),
-                    admitted,
-                    false,
-                    reason,
-                ),
+                capability_validation: request.proposal.decision.requires_capability().then(|| {
+                    CapabilityValidation::new(
+                        request
+                            .proposal
+                            .capability
+                            .clone()
+                            .unwrap_or_else(|| "none".to_string()),
+                        admitted,
+                        false,
+                        reason,
+                    )
+                }),
                 route: request.proposal.route.clone(),
                 approvals: Vec::new(),
                 grants: Vec::new(),
