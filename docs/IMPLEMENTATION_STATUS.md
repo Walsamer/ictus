@@ -4,6 +4,11 @@ Inspected main: `833175d88adeed59f8e62c14c5e5577580cfdf33`, 2026-10-06.
 Historical M0–M3 completion referred to repository foundation, Dagster demos,
 typed core and stdio bridge. Those numbers are not the new shared milestones.
 
+The Tactus-facing surface was re-inspected at main `c140af3`, 2026-11-01: its
+contracts and its durable submission boundary exist and are tested, but they are
+unwired at the binary and Python-bridge boundary. See
+"Missing for the complete Tactus path".
+
 ## Implemented and retained
 
 - Rust generic core, ports, adapters, deterministic rules/policy and JSON schemas.
@@ -21,7 +26,38 @@ implementation PR; architecture documentation does not promote that commit.
 
 ## Missing for the complete Tactus path
 
-- Validated decision/intent binding to subject, revision, policy and real grants.
+The contracts are not the gap. `contracts/decision-context.schema.json`,
+`contracts/decision-envelope.schema.json`, `examples/decision-envelope.*.json`,
+`crates/core/src/envelope.rs` and `crates/policy/src/composition.rs` implement
+initial/recovery contexts and validated envelopes bound to subject, revision,
+policy and grants, and `crates/core/tests/contracts_json.rs`,
+`crates/core/tests/contracts_api.rs` and
+`tests/python/test_contracts_schemas.py` cover them. What is missing is the wire
+between those contracts and Tactus:
+
+- **No binary emits a `DecisionEnvelope`.** `crates/bridge/src/main.rs` offers
+  `decide`, `execute`, `submit` and `flow`; `decide` reads a `StateSnapshot` and
+  prints `schema_version`, `proposal`, `policy_decision` and `execution_intent`.
+  Tactus therefore admits that legacy triple on structural and binding checks
+  only (`src/tactus/application/execution_cycle.py`,
+  `parse_execution_decision`) and translates its canonical attempt facts onto
+  the legacy `retry.*` keys itself
+  (`src/tactus/integrations/ictus/state_snapshot.py`,
+  `to_ictus_legacy_boundary_payload`).
+- **`ExecutionResult` → `ExecutionObservation` is not exposed in Python.**
+  `crates/core/src/execution.rs` (`to_observation`) holds the conversion;
+  `python/ictus_dagster/` never calls it, so Tactus builds the v1 observation
+  envelope itself in `scripts/validate_execution_slice.py`
+  (`_observation_from_result`), documented there as a shim.
+- **No shared cross-repository fixtures are held here.** The five-scenario slice
+  is proven by the Tactus repository (`Walsamer/tactus#12`), not by fixtures in
+  this repository that assert the Rust, Python and Tactus contracts against each
+  other.
+- **The runtime and publication capability backends do not exist here.**
+  `software.implement` and `software.promote` are explicit fail-closed routes
+  (`python/ictus_dagster/workflows.toml`,
+  `python/ictus_dagster/jobs/software_agent_job.py`); Tactus issues #22 and #23
+  remain open.
 
 ## Semantic recovery policy
 
@@ -48,11 +84,9 @@ fact identity/revision so Tactus can reject stale admission without reranking.
 Runtime adapters must execute that exact route or report a fact; they cannot
 silently substitute a provider or model. Compatibility callers should migrate
 from `BackendRegistry.compatible()` to `LocalPolicyComposition::validate_with_route_selection`.
-- Persistent asynchronous submission, receipt/reconciliation and result delivery.
-- Cross-repository behavioral fixtures and the five-scenario vertical slice.
 
-The synchronous `execute_in_process` bridge has useful history/correlation but
-does not establish queued, independently launched restart-safe execution.
+The synchronous `execute_in_process` bridge remains the demo path; the queued,
+independently launched restart-safe path is `python/ictus_dagster/submission.py`.
 Rules read the canonical semantic accounting (`attempts.semantic` /
 `attempts.max_semantic`) and escalate on missing/ambiguous values instead of
 silently exhausting a 0/0 budget. Success is tagged `recovery_outcome =

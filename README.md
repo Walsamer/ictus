@@ -203,9 +203,31 @@ durability guarantees and limitations are documented in
 
 Read [Ictus scope](docs/architecture/BASELINE_V1.md) and the
 [implementation reconciliation](docs/architecture/BASELINE_V1_RECONCILIATION.md).
-The generic foundation and three example domains are implemented. Persistent
-Dagster demos exist; the complete Tactus context/authorization contract and a
-queued, restart-safe execution bridge remain work.
+The generic foundation and three example domains are implemented.
+
+The Tactus-facing decision contracts exist and are covered by tests: the
+versioned schemas `contracts/decision-context.schema.json` and
+`contracts/decision-envelope.schema.json`, their examples in
+`examples/decision-context.*.json` and `examples/decision-envelope.*.json`, and
+the `DecisionEnvelope` builder `LocalPolicyComposition`
+(`crates/policy/src/composition.rs`). Queued, restart-safe submission with
+receipt reconciliation is implemented in `python/ictus_dagster/submission.py`
+and evidenced in
+[`docs/DURABLE_SUBMISSION_VERIFICATION.md`](docs/DURABLE_SUBMISSION_VERIFICATION.md);
+the Tactus repository exercises that boundary end to end against a real queued
+Dagster instance, including a process loss between send and receipt (Tactus
+`docs/architecture/END_TO_END_EXECUTION_VALIDATION.md`).
+
+What remains at that boundary is narrower than a contract: **no binary emits a
+`DecisionEnvelope`.** `ictus decide` still reads a `StateSnapshot` and prints
+`schema_version`, `proposal`, `policy_decision` and `execution_intent`, so the
+validated-envelope authorization contract is unwired. The `ExecutionResult` →
+`ExecutionObservation` conversion exists in Rust
+(`crates/core/src/execution.rs`, `to_observation`) but is not exposed by the
+Python bridge, so Tactus assembles that envelope itself in a harness shim. The
+runtime and publication ends are not implemented here: `software.implement` and
+`software.promote` are explicit fail-closed routes
+(`python/ictus_dagster/workflows.toml`).
 
 The shared plan is [GitHub Issues](https://github.com/Walsamer/ictus/issues), grouped
 by the [M0–M5 roadmap](docs/ROADMAP.md). Humans and Fleet use the same intent:
