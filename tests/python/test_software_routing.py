@@ -1,9 +1,11 @@
 """Fail-closed routing for the software implementation/publication capabilities.
 
 These tests pin the operator-approved routing option A: both capabilities get
-explicit workflow names, but the jobs are placeholders that always fail closed
-and can never report success.  The generic capability mapper keeps rejecting
-them, and the durable submission contract is unchanged.
+explicit workflow names and the same ``prepare -> execute -> verify ->
+finalize`` skeleton as the capability workflow, but with no runtime seam
+configured they fail closed with the placeholder's exact typed failure and can
+never report success.  The generic capability mapper keeps rejecting them, and
+the durable submission contract is unchanged.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ SOFTWARE_ROUTES = [
         "software.implement",
         "software_agent_job",
         "software_agent_settings",
-        "software_agent_placeholder_op",
+        "software_agent_prepare_op",
         dummy.software_agent_job_factory,
         id="implement",
     ),
@@ -52,7 +54,7 @@ SOFTWARE_ROUTES = [
         "software.promote",
         "software_publish_job",
         "software_publish_settings",
-        "software_publish_placeholder_op",
+        "software_publish_prepare_op",
         dummy.software_publish_job_factory,
         id="promote",
     ),
@@ -100,23 +102,34 @@ def _execute_recorded_run(instance, run_id: str, factory):
     )
 
 
-def _failure_metadata(instance, run_id: str) -> dict:
+#: The exact metadata keys the unconfigured route's fail-closed ``Failure``
+#: carries: no seam evidence, no failure kind, nothing Dagster adds.
+FAIL_CLOSED_METADATA_KEYS = {
+    "ictus.capability",
+    "ictus.job",
+    "ictus.failure_category",
+    "ictus.placeholder",
+    "ictus.retryable",
+}
+
+
+def _user_failure(instance, run_id: str):
     for record in instance.all_logs(run_id):
         event = getattr(record, "dagster_event", None)
         if getattr(event, "event_type_value", None) != "STEP_FAILURE":
             continue
         failure = getattr(event.event_specific_data, "user_failure_data", None)
         if failure is not None:
-            return failure.metadata
+            return failure
     raise AssertionError(f"run {run_id} has no user Failure metadata")
 
 
 @pytest.mark.parametrize(
-    ("capability", "job_name", "resource_key", "_op_name", "_factory"),
+    ("capability", "job_name", "resource_key", "_failed_step", "_factory"),
     SOFTWARE_ROUTES,
 )
 def test_software_capabilities_route_to_distinct_explicit_jobs(
-    capability, job_name, resource_key, _op_name, _factory
+    capability, job_name, resource_key, _failed_step, _factory
 ) -> None:
     spec = resolve_workflow(capability)
     assert spec.job.name == job_name
@@ -170,11 +183,11 @@ def test_software_specific_mappers_are_explicit_and_fail_closed_elsewhere() -> N
 
 
 @pytest.mark.parametrize(
-    ("capability", "_job_name", "resource_key", "op_name", "_factory"),
+    ("capability", "job_name", "resource_key", "failed_step", "_factory"),
     SOFTWARE_ROUTES,
 )
-def test_placeholder_jobs_fail_closed_with_a_typed_non_retryable_failure(
-    capability, _job_name, resource_key, op_name, _factory
+def test_unconfigured_software_jobs_fail_closed_with_the_placeholder_failure(
+    capability, job_name, resource_key, failed_step, _factory
 ) -> None:
     spec = resolve_workflow(capability)
     config = spec.settings_from_arguments({})
@@ -186,34 +199,55 @@ def test_placeholder_jobs_fail_closed_with_a_typed_non_retryable_failure(
             raise_on_error=False,
         )
         assert result.success is False
-        assert result.get_failed_step_keys() == {op_name}
+        # The refusal is the prepare step's: no seam is configured, so nothing
+        # may be held, executed, verified or finalized.
+        assert result.get_failed_step_keys() == {failed_step}
 
-        metadata = _failure_metadata(instance, result.run_id)
+        failure = _user_failure(instance, result.run_id)
+        # Byte-comparable: an unconfigured deployment keeps the placeholder's
+        # exact description, so the fail-closed message cannot drift.
+        assert failure.description == (
+            f"{job_name} is a fail-closed placeholder: "
+            f"'{capability}' has no implementation in this Ictus code location"
+        )
+
+        metadata = failure.metadata
+        assert set(metadata) == FAIL_CLOSED_METADATA_KEYS
         assert metadata["ictus.capability"].text == capability
+        assert metadata["ictus.job"].text == job_name
         assert metadata["ictus.failure_category"].text == "INTEGRATION_CONFLICT"
         assert metadata["ictus.placeholder"].value is True
         assert metadata["ictus.retryable"].value is False
-        assert metadata["ictus.job"].text == spec.job.name
 
-        mapped = execution_result_from_run(
+        # The category survives both ways a caller can learn it: the generic
+        # per-step default and the typed category the step reported.
+        by_step_name = execution_result_from_run(
             execution_id=result.run_id,
             intent_id="attempt:software",
             success=result.success,
-            failed_step=op_name,
+            failed_step=failed_step,
         )
-        assert validate_result(mapped) is mapped
-        assert mapped["status"] == "failed"
-        assert mapped["observation"]["category"] == "INTEGRATION_CONFLICT"
+        by_reported_category = execution_result_from_run(
+            execution_id=result.run_id,
+            intent_id="attempt:software",
+            success=result.success,
+            failed_step=failed_step,
+            failure_category=metadata["ictus.failure_category"].text,
+        )
+        for mapped in (by_step_name, by_reported_category):
+            assert validate_result(mapped) is mapped
+            assert mapped["status"] == "failed"
+            assert mapped["observation"]["category"] == "INTEGRATION_CONFLICT"
     finally:
         instance.dispose()
 
 
 @pytest.mark.parametrize(
-    ("capability", "_job_name", "_resource_key", "_op_name", "_factory"),
+    ("capability", "_job_name", "_resource_key", "_failed_step", "_factory"),
     SOFTWARE_ROUTES,
 )
 def test_bridge_executes_software_route_as_a_failed_result(
-    capability, _job_name, _resource_key, _op_name, _factory
+    capability, _job_name, _resource_key, _failed_step, _factory
 ) -> None:
     instance = DagsterInstance.ephemeral()
     try:
@@ -225,11 +259,11 @@ def test_bridge_executes_software_route_as_a_failed_result(
 
 
 @pytest.mark.parametrize(
-    ("capability", "job_name", "resource_key", "_op_name", "factory"),
+    ("capability", "job_name", "resource_key", "_failed_step", "factory"),
     SOFTWARE_ROUTES,
 )
-def test_dummy_tactus_like_location_executes_the_recorded_run(
-    persistent_instance, capability, job_name, resource_key, _op_name, factory
+def test_dummy_tactus_like_location_executes_and_reports_the_same_submission(
+    persistent_instance, capability, job_name, resource_key, _failed_step, factory
 ) -> None:
     intent = _intent(capability)
     receipt = submission.submit_intent(intent, instance=persistent_instance)
@@ -239,10 +273,20 @@ def test_dummy_tactus_like_location_executes_the_recorded_run(
     # The independent location registers the same routed job name.
     assert dummy.defs.get_job_def(job_name).name == job_name
 
-    result = _execute_recorded_run(persistent_instance, receipt["receipt_id"], factory)
+    # Dagster pins the recording location's step keys on the run, so a location
+    # with the same job name and resource key but a different graph cannot
+    # execute that run record (its subset plan would name unknown steps).  The
+    # independent location therefore records the same submission -- untouched
+    # run config and identity tags -- against its own graph and must accept it.
+    foreign = persistent_instance.create_run_for_job(
+        dummy.defs.get_job_def(job_name),
+        run_config=run.run_config,
+        tags=dict(run.tags),
+    )
+    result = _execute_recorded_run(persistent_instance, foreign.run_id, factory)
     assert result.success is False
 
-    status = submission.query_receipt(receipt, instance=persistent_instance)
+    status = submission.query_receipt(foreign.run_id, instance=persistent_instance)
     assert status["state"] == "terminal"
     assert status["result"]["status"] == "failed"
     assert status["result"]["observation"]["category"] == "INTEGRATION_CONFLICT"

@@ -19,6 +19,10 @@ from ictus_dagster.adapters.intent_config import (
     diagnostic_settings,
     diagnostic_settings_from_intent,
     settings_from_intent,
+    software_agent_settings,
+    software_agent_settings_from_intent,
+    software_publish_settings,
+    software_publish_settings_from_intent,
 )
 
 
@@ -175,3 +179,76 @@ def test_diagnostic_settings_defaults() -> None:
 def test_diagnostics_rejects_other_capabilities() -> None:
     with pytest.raises(UnsupportedCapability, match="not a system-diagnostics capability"):
         diagnostic_settings_from_intent(_intent("demo.verify"))
+
+
+# -- software routes --------------------------------------------------------
+
+#: The two symmetric software routes: capability, pure mapper, intent mapper.
+SOFTWARE_SETTINGS_MAPPERS = [
+    pytest.param(
+        "software.implement",
+        software_agent_settings,
+        software_agent_settings_from_intent,
+        id="implement",
+    ),
+    pytest.param(
+        "software.promote",
+        software_publish_settings,
+        software_publish_settings_from_intent,
+        id="promote",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("capability", "mapper", "from_intent"), SOFTWARE_SETTINGS_MAPPERS
+)
+def test_software_settings_keep_the_placeholder_shape(
+    capability, mapper, from_intent
+) -> None:
+    # No implementation request is read from the intent: with no seam named, the
+    # settings are exactly the legacy fail-closed shape.
+    expected = {"capability": capability, "placeholder": True}
+    assert mapper({}) == expected
+    assert mapper({"ignored": "value"}) == expected
+    assert from_intent(_intent(capability)) == expected
+
+
+@pytest.mark.parametrize(
+    ("capability", "mapper", "from_intent"), SOFTWARE_SETTINGS_MAPPERS
+)
+def test_software_settings_carry_a_named_runtime_seam(
+    capability, mapper, from_intent
+) -> None:
+    expected = {
+        "capability": capability,
+        "placeholder": True,
+        "runtime_seam": "/etc/ictus/seam.json",
+    }
+    assert mapper({"runtime_seam": "  /etc/ictus/seam.json  "}) == expected
+    assert from_intent(
+        _intent(capability, {"runtime_seam": "/etc/ictus/seam.json"})
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    ("capability", "mapper", "from_intent"), SOFTWARE_SETTINGS_MAPPERS
+)
+@pytest.mark.parametrize(
+    "seam",
+    [
+        pytest.param(None, id="null"),
+        pytest.param(42, id="integer"),
+        pytest.param(True, id="boolean"),
+        pytest.param("", id="empty"),
+        pytest.param("   ", id="blank"),
+    ],
+)
+def test_software_settings_omit_an_unusable_runtime_seam(
+    capability, mapper, from_intent, seam
+) -> None:
+    # Anything that is not a non-empty string leaves the fail-closed default in
+    # place instead of reaching the seam with an unusable path.
+    expected = {"capability": capability, "placeholder": True}
+    assert mapper({"runtime_seam": seam}) == expected
+    assert from_intent(_intent(capability, {"runtime_seam": seam})) == expected

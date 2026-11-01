@@ -15,6 +15,7 @@ from ictus_dagster.adapters.contracts import ContractError, validate_result
 from ictus_dagster.adapters.result_mapping import (
     execution_result_from_run,
     result_to_observation,
+    seam_evidence_items,
 )
 from conftest import CONTRACTS_DIR
 
@@ -134,6 +135,86 @@ def test_explicit_failure_category_wins() -> None:
     assert payload["observation"]["category"] == "WORKER_TIMEOUT"
 
 
+@pytest.mark.parametrize(
+    ("failed_step", "category"),
+    [
+        ("software_agent_prepare_op", "INTEGRATION_CONFLICT"),
+        ("software_agent_execute_op", "PROCESS_CRASH"),
+        ("software_agent_verify_op", "VERIFICATION_FAILURE"),
+        ("software_agent_finalize_op", "UNKNOWN"),
+        ("software_publish_prepare_op", "INTEGRATION_CONFLICT"),
+        ("software_publish_execute_op", "PROCESS_CRASH"),
+        ("software_publish_verify_op", "VERIFICATION_FAILURE"),
+        ("software_publish_finalize_op", "UNKNOWN"),
+    ],
+)
+def test_software_seam_step_categories(failed_step: str, category: str) -> None:
+    payload = execution_result_from_run(
+        execution_id="exec-seam",
+        intent_id="intent-seam",
+        success=False,
+        failed_step=failed_step,
+    )
+    assert payload["status"] == "failed"
+    assert payload["observation"]["category"] == category
+    _result_schema().validate(payload)
+
+
+def _step_failure_event(*, reported: str | None) -> SimpleNamespace:
+    """A ``STEP_FAILURE`` event shaped the way the durable query path reads it."""
+    metadata = (
+        {}
+        if reported is None
+        else {"ictus.failure_category": SimpleNamespace(text=reported)}
+    )
+    return SimpleNamespace(
+        event_type_value="STEP_FAILURE",
+        step_key="software_agent_prepare_op",
+        event_specific_data=SimpleNamespace(
+            error=None, user_failure_data=SimpleNamespace(metadata=metadata)
+        ),
+    )
+
+
+def test_a_reported_failure_category_wins_over_the_step_default() -> None:
+    reported = submission._reported_failure_category(
+        _step_failure_event(reported="WORKER_TIMEOUT")
+    )
+    assert reported == "WORKER_TIMEOUT"
+    # The prepare step's own default is INTEGRATION_CONFLICT; the typed category
+    # the step reported is what the result carries.
+    payload = execution_result_from_run(
+        execution_id="e",
+        intent_id="i",
+        success=False,
+        failed_step="software_agent_prepare_op",
+        failure_category=reported,
+    )
+    assert payload["observation"]["category"] == "WORKER_TIMEOUT"
+
+
+@pytest.mark.parametrize(
+    "reported",
+    [
+        pytest.param(None, id="no-metadata"),
+        pytest.param("NOT_A_CATEGORY", id="unknown"),
+    ],
+)
+def test_an_unknown_reported_category_falls_back_to_the_step_default(
+    reported: str | None,
+) -> None:
+    event = _step_failure_event(reported=reported)
+    assert submission._reported_failure_category(event) is None
+    payload = execution_result_from_run(
+        execution_id="e",
+        intent_id="i",
+        success=False,
+        failed_step="software_agent_prepare_op",
+        failure_category=None,
+    )
+    assert payload["observation"]["category"] == "INTEGRATION_CONFLICT"
+
+
 def test_known_terminal_runtime_statuses_preserve_timeout_and_cancellation() -> None:
     timed_out = execution_result_from_run(
         execution_id="timeout", intent_id="intent", success=False, run_status="TIMED_OUT"
@@ -166,6 +247,100 @@ def test_invalid_category_is_rejected() -> None:
                 "observation": {"category": "BOGUS"},
             }
         )
+
+
+# --- runtime seam evidence -------------------------------------------------
+
+#: A seam summary as ``seam_runtime.finalize`` emits it.
+SEAM_SUMMARY: dict = {
+    "capability": "software.implement",
+    "job": "software_agent_job",
+    "verified": True,
+    "outcome": "succeeded",
+    "changed_paths": [
+        "python/ictus_dagster/seam/port.py",
+        "python/ictus_dagster/seam/runtime.py",
+    ],
+    "patch_digest": "sha256:" + "b" * 64,
+    "patch_bytes": 4096,
+    "steps_used": 7,
+    "duration_seconds": 12.5,
+    "exit_status": {"code": 0, "signal": None},
+    "termination": {"requested": False, "signals": [], "confirmed": False},
+    "verification": {"verified": True, "detail": "tests passed"},
+    "runtime": {
+        "executable": "stub",
+        "version_token": "1",
+        "probe": {"ok": True, "detail": ""},
+    },
+}
+
+SEAM_PATCH_NOTE = (
+    "changed_paths=python/ictus_dagster/seam/port.py,"
+    "python/ictus_dagster/seam/runtime.py; patch_bytes=4096"
+)
+SEAM_EXIT_NOTE = (
+    "outcome=succeeded; exit_code=0; signal=None; termination_confirmed=False; "
+    "steps_used=7; duration_seconds=12.5"
+)
+
+
+def test_seam_evidence_is_empty_without_a_configured_seam() -> None:
+    assert seam_evidence_items(None) == []
+    assert seam_evidence_items({}) == []
+    for seam_evidence in (None, {}):
+        payload = execution_result_from_run(
+            execution_id="exec-no-seam",
+            intent_id="intent-no-seam",
+            success=False,
+            failed_step="software_agent_prepare_op",
+            seam_evidence=seam_evidence,
+        )
+        assert payload["evidence"] == []
+        _result_schema().validate(payload)
+
+
+def test_seam_evidence_restates_the_runtime_facts() -> None:
+    assert seam_evidence_items(SEAM_SUMMARY) == [
+        {
+            "kind": "runtime_patch",
+            "uri": "seam://patch",
+            "note": SEAM_PATCH_NOTE,
+            # The contract carries the digest without the algorithm prefix.
+            "sha256": "b" * 64,
+        },
+        {
+            "kind": "runtime_exit",
+            "uri": "seam://exit",
+            "note": SEAM_EXIT_NOTE,
+        },
+    ]
+
+    payload = execution_result_from_run(
+        execution_id="exec-seam",
+        intent_id="intent-seam",
+        success=True,
+        evidence=[{"kind": "dagster_run", "uri": "dagster://runs/exec-seam"}],
+        seam_evidence=SEAM_SUMMARY,
+    )
+    _result_schema().validate(payload)
+    assert payload["evidence"][0] == {
+        "kind": "dagster_run",
+        "uri": "dagster://runs/exec-seam",
+    }
+    assert payload["evidence"][1:] == seam_evidence_items(SEAM_SUMMARY)
+
+
+def test_seam_evidence_reports_an_empty_attempt_faithfully() -> None:
+    items = seam_evidence_items(
+        {**SEAM_SUMMARY, "changed_paths": [], "patch_digest": None, "patch_bytes": 0}
+    )
+    assert items[0] == {
+        "kind": "runtime_patch",
+        "uri": "seam://patch",
+        "note": "changed_paths=none; patch_bytes=0",
+    }
+    assert items[1]["note"] == SEAM_EXIT_NOTE
 
 
 # --- ExecutionResult -> ExecutionObservation -------------------------------
