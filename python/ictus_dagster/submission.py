@@ -414,8 +414,17 @@ def submit_intent(
         return _receipt(_reload(dagster_instance, run), digest)
 
 
-def _failed_step(instance: DagsterInstance, run_id: str) -> tuple[str | None, str | None]:
-    """Extract raw failure facts without assigning policy meaning to them."""
+def failed_step_from_run(
+    instance: DagsterInstance, run_id: str
+) -> tuple[str | None, str | None]:
+    """Report a run's failed step and the typed category that step reported.
+
+    Raw failure facts only: the step key Dagster failed, and the
+    ``ictus.failure_category`` that step put on its ``Failure`` (the runtime seam
+    classifies its own failures).  A step that reported nothing usable yields
+    ``None`` for the category, which lets the caller fall back to its generic
+    per-step default instead of inventing a cause.
+    """
     try:
         events = instance.all_logs(run_id)
     except Exception:  # pragma: no cover - unavailable event storage is evidence itself
@@ -535,7 +544,7 @@ def _status_envelope(
     }
     status_name = _status_name(run)
     if status_name in TERMINAL_RUN_STATUSES:
-        failed_step, failure_category = _failed_step(instance, run.run_id)
+        failed_step, failure_category = failed_step_from_run(instance, run.run_id)
         started_at, finished_at = _run_record_times(instance, run)
         response["state"] = "terminal"
         response["result"] = execution_result_from_run(

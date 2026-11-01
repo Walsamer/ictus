@@ -8,8 +8,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": 1,
-      "description": "Version of this configuration contract. A consumer pins it and fails closed on drift."
+      "const": 1
     },
     "backend": {
       "type": "string",
