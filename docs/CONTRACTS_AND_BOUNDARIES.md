@@ -487,11 +487,12 @@ schema_version
 ```
 
 `schema_version` is per-contract. The base contracts and the initial/recovery
-`DecisionContext` and validated `DecisionEnvelope` contracts are at `1`; the
-`DecisionProposal` contract is at `2`. Breaking changes require a new version;
+`DecisionContext` contract are at `1`; the `DecisionProposal` contract is at `2`,
+and the validated `DecisionEnvelope` contract is at `2` with its frozen `1`
+still accepted (ADR 0001, ADR 0003). Breaking changes require a new version;
 new wire versions change only when required. Adapters may support multiple
-versions during migration, and old inputs (e.g. legacy `RETRY` proposals) have
-explicit compatibility fixtures.
+versions during migration, and old inputs (e.g. legacy `RETRY` proposals, and
+the frozen envelope v1 shape) have explicit compatibility fixtures.
 
 ---
 

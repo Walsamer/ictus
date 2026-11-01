@@ -240,7 +240,8 @@ emitted as v2 with outcome `NO_EXECUTION` and no intent, bound by the same
 subject, snapshot digest, proposal, policy and expiry as an execution. The CLI
 follows: an escalation now makes `ictus decide --context` exit 3 with that
 envelope instead of 2 with nothing.
-The runtime and publication ends are not implemented here either:
+
+The runtime and publication ends are not implemented here:
 `software.implement` and `software.promote` are explicit fail-closed routes
 (`python/ictus_dagster/workflows.toml`).
 
