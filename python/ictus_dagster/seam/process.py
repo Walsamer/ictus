@@ -32,6 +32,15 @@ class TerminationError(RuntimeError):
     """Raised when a process group cannot be started or terminated safely."""
 
 
+def copy_report(report: dict[str, Any]) -> dict[str, Any]:
+    """A caller-owned copy: the one authoritative confirmation stays intact."""
+    return {
+        **report,
+        "signals": list(report["signals"]),
+        "process_groups": list(report["process_groups"]),
+    }
+
+
 def _group_alive(pgid: int) -> bool:
     """Whether any process is still left in ``pgid``."""
     try:
@@ -112,7 +121,7 @@ class ProcessSupervisor:
         read the one authoritative confirmation.
         """
         if self._report is not None:
-            return dict(self._report)
+            return copy_report(self._report)
         groups = self.live_groups()
         signals: list[str] = []
         if groups:
@@ -130,4 +139,4 @@ class ProcessSupervisor:
             "process_groups": groups,
             "confirmed": not self.live_groups(),
         }
-        return dict(self._report)
+        return copy_report(self._report)

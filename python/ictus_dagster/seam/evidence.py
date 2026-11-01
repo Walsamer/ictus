@@ -158,9 +158,14 @@ def validate_evidence(document: Any) -> dict[str, Any]:
         raise EvidenceError(
             f"attempt evidence is missing field(s): {', '.join(sorted(missing))}"
         )
-    if document["schema_version"] != EVIDENCE_SCHEMA_VERSION:
+    version = document["schema_version"]
+    if isinstance(version, bool) or not isinstance(version, int):
         raise EvidenceError(
-            f"unsupported evidence schema_version {document['schema_version']!r}; "
+            f"evidence schema_version must be an integer, not {version!r}"
+        )
+    if version != EVIDENCE_SCHEMA_VERSION:
+        raise EvidenceError(
+            f"unsupported evidence schema_version {version!r}; "
             f"expected {EVIDENCE_SCHEMA_VERSION}"
         )
     outcome = document["outcome"]
@@ -212,7 +217,9 @@ def out_of_scope(changed_paths: list[str], write_scope: tuple[str, ...]) -> list
     in scope when it equals a scope entry or continues it with ``/``.  Ictus
     never resolves symlinks, never opens the workspace and never interprets the
     runtime's view of it; a runtime that reports absolute paths must be given
-    absolute scope entries, and a mismatch fails the attempt closed.
+    absolute scope entries, and a mismatch fails the attempt closed.  A root
+    entry ``/`` therefore contains absolute paths only, and a relative path
+    needs a relative entry.
     """
     scopes = tuple(normalize_scope_path(scope) for scope in write_scope)
     outside = []

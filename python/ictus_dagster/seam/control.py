@@ -16,7 +16,7 @@ import subprocess
 import time
 from typing import Any, Callable, Mapping, Sequence
 
-from ictus_dagster.seam.process import ProcessSupervisor
+from ictus_dagster.seam.process import ProcessSupervisor, copy_report
 
 
 class AttemptHalted(RuntimeError):
@@ -74,7 +74,7 @@ class ExecutionControl:
     @property
     def termination(self) -> dict[str, Any] | None:
         """The termination evidence document, once termination was requested."""
-        return None if self._termination is None else dict(self._termination)
+        return None if self._termination is None else copy_report(self._termination)
 
     def spawn(
         self,
@@ -125,7 +125,7 @@ class ExecutionControl:
         if self._termination is None:
             self._cancelled_reason = reason
             self._termination = self._supervisor.terminate(reason)
-        return dict(self._termination)
+        return copy_report(self._termination)
 
     def finish(self) -> dict[str, Any] | None:
         """End the attempt's remaining processes; report if any were left live.

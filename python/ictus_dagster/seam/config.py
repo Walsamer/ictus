@@ -158,10 +158,15 @@ def parse_seam_config(document: Any, *, source: str) -> SeamConfig:
     """Validate a seam configuration document and return it parsed."""
     parsed = _require_mapping(document, "runtime seam config")
     _require_exact_fields(parsed, CONFIG_FIELDS, "runtime seam config")
-    if parsed["schema_version"] != SEAM_CONFIG_VERSION:
+    version = parsed["schema_version"]
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise SeamConfigError(
+            f"runtime seam config schema_version must be an integer, not {version!r}"
+        )
+    if version != SEAM_CONFIG_VERSION:
         raise SeamConfigError(
             f"unsupported runtime seam config schema_version "
-            f"{parsed['schema_version']!r}; expected {SEAM_CONFIG_VERSION}"
+            f"{version!r}; expected {SEAM_CONFIG_VERSION}"
         )
     workspace = _require_mapping(parsed["workspace"], "workspace")
     _require_exact_fields(workspace, WORKSPACE_FIELDS, "workspace")
