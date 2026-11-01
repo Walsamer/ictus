@@ -241,9 +241,12 @@ subject, snapshot digest, proposal, policy and expiry as an execution. The CLI
 follows: an escalation now makes `ictus decide --context` exit 3 with that
 envelope instead of 2 with nothing.
 
-The runtime and publication ends are not implemented here:
-`software.implement` and `software.promote` are explicit fail-closed routes
-(`python/ictus_dagster/workflows.toml`).
+The runtime and publication ends are not shipped here, but they are no longer
+closed placeholders: `software.implement` and `software.promote` run the same
+`prepare -> execute -> verify -> finalize` skeleton as `capability_execution_job`
+and reach a runtime named in operator-owned configuration through a narrow port
+([`docs/RUNTIME_SEAM.md`](docs/RUNTIME_SEAM.md)). Unconfigured, both routes keep
+their typed `INTEGRATION_CONFLICT` placeholder failure.
 
 The shared plan is [GitHub Issues](https://github.com/Walsamer/ictus/issues), grouped
 by the [M0–M5 roadmap](docs/ROADMAP.md). Humans and Fleet use the same intent:

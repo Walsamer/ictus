@@ -19,6 +19,10 @@ submission boundary.
 ## Read first
 
 - `docs/DURABLE_SUBMISSION.md` — submission / receipt / result contract and recovery semantics.
+- `docs/RUNTIME_SEAM.md` — how the software execution jobs reach a runtime
+  (`prepare -> execute -> verify -> finalize`, configuration-selected backend,
+  bounds, process-group termination, evidence), and the unconfigured
+  fail-closed default.
 - `docs/DURABLE_SUBMISSION_REVIEW.md` — acceptance review (criteria 1–3 PASS).
 - `docs/DURABLE_SUBMISSION_VERIFICATION.md` — exact-head verification evidence.
 - `docs/CONTRACTS_AND_BOUNDARIES.md`, `docs/DECISIONS.md`.
