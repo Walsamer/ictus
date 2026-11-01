@@ -77,7 +77,7 @@ escalation is as verifiable as an execution.
 | --- | --- | --- |
 | Shape | frozen (ADR 0002) | conditional `capability_validation` |
 | `capability_validation` | always present | present iff the decision carries a capability |
-| `NO_EXECUTION` | not reachable | the outcome for `ESCALATE` / `ABORT` / `DECOMPOSE` |
+| Outcomes | `EXECUTABLE` / `DENIED` / `PENDING` / `NO_ROUTE` / `INVALID` | those, plus `NO_EXECUTION` for a decision that carries no capability |
 | Emitted by this build for | a capability-bearing decision | a decision that carries none |
 | Accepted on input for | a capability-bearing decision | either kind |
 
@@ -91,7 +91,21 @@ escalation is as verifiable as an execution.
   and must still carry its capability — a writer can move to v2 everywhere
   without another contract change. v1 cannot describe a decision that carries no
   capability, because v1 always carries `capability_validation`.
-- Unknown versions fail closed.
+- **Exactly one thing narrowed in v1**, deliberately: a v1 envelope that claims
+  a capability for `ESCALATE`, `ABORT` or `DECOMPOSE` used to validate and is
+  now a contract error, because a capability claim on such a decision is the
+  fabricated validation this contract exists to refuse (the previous composition
+  could emit that shape for a `DECOMPOSE` carrying a capability). No field,
+  requirement or output of v1 for a capability-bearing decision changed, and no
+  v1 payload with a genuine capability is affected.
+- A non-capability envelope's outcome is one of `NO_EXECUTION` (the decision was
+  permitted and nothing executes), `DENIED` (policy refused it) or `INVALID` (it
+  could not be validated). `PENDING` and `NO_ROUTE` describe an approval gate and
+  a route — neither exists without a capability — and `NO_EXECUTION` cannot carry
+  a refusing verdict.
+- Unknown versions fail closed. Absent means omitted: like `intent` and `route`,
+  an explicit JSON `null` for `capability_validation` is read as absent by the
+  Rust reader and is not a shape the schema accepts; Ictus never emits one.
 
 ### 4. Not changed
 
@@ -113,4 +127,13 @@ envelope** instead of 2 with nothing.
   rejecting unknown ones.
 - The wire vocabulary grew by one outcome token. This is a contract change
   carried by a version, not a silent reinterpretation of v1.
+- A consumer must branch on the envelope, not on the exit code. Exit `3` covers
+  a refusal and an escalation alike, where an escalation previously surfaced as
+  exit `2` with empty stdout: a consumer whose default for a non-executable exit
+  is "nothing to do" would drop the escalation silently.
+- The bounded decomposition plan of a `DECOMPOSE` is bound by
+  `validation.proposal_digest` but not carried in the envelope, so a consumer
+  that acts on a decomposition must obtain the raw proposal and re-verify it
+  against that digest before creating children. An execution envelope does not
+  have this asymmetry: its intent carries the work.
 - Any future change to the conditional shape needs another versioned migration.

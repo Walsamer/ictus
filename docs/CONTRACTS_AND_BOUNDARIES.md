@@ -251,19 +251,31 @@ tolerated extra field, and `validation.capability_version` reads
 
 A non-capability envelope binds no `approvals`, no `grants` and no `route` (each
 of those binds a capability), carries no `intent`, and resolves to
-`NO_EXECUTION`. Everything else binds identically — subject, snapshot
-id/revision and Ictus-computed digest, proposal identity/version/decision,
-policy identity/version/verdict, the SHA-256 digest of the canonical proposal
-bytes, the validation timestamp and the expiry — so an escalation is as
-verifiable as an execution. Both versions are accepted on input; unknown
-versions fail closed.
+`NO_EXECUTION` — or, when policy refuses the decision or its context is invalid,
+to `DENIED` or `INVALID`. `PENDING` and `NO_ROUTE` describe an approval gate and
+a route for a capability, so neither can describe such a decision. Everything
+else binds identically — subject, snapshot id/revision and Ictus-computed
+digest, proposal identity/version/decision, policy identity/version/verdict, the
+SHA-256 digest of the canonical proposal bytes, the validation timestamp and the
+expiry — so an escalation is as verifiable as an execution. Both versions are
+accepted on input; unknown versions fail closed.
+
+Exactly one thing narrowed in v1: a v1 envelope that claims a capability for
+`ESCALATE`, `ABORT` or `DECOMPOSE` used to validate and is now a contract error.
+That claim is the fabricated validation the versioning exists to refuse. No
+field, requirement or output of v1 changed for a capability-bearing decision.
+
+`NO_EXECUTION` is not a refusal: the decision was validated and permitted, it
+carries no capability, nothing reaches an execution backend, and the consumer
+acts on `proposal.decision` — hand to a human, stop, decompose. It cannot carry
+a refusing verdict.
 
 The `outcome` is the resolved gate: `EXECUTABLE`, `DENIED`, `PENDING`,
 `NO_ROUTE`, `INVALID` or `NO_EXECUTION`. It is derived from the policy verdict
 and route resolution, and is never inferred from the presence of an intent.
-`NO_EXECUTION` is not a refusal: the decision was validated and permitted, it
-carries no capability, nothing reaches an execution backend, and the consumer
-acts on `proposal.decision` — hand to a human, stop, decompose.
+`NO_EXECUTION` is the only outcome v2 added. Absent means omitted: like `intent`
+and `route`, an explicit JSON `null` for `capability_validation` reads as absent
+and is not a shape the schema accepts; Ictus never emits one.
 
 Binding rules:
 

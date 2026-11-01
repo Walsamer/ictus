@@ -69,15 +69,25 @@
         }
       },
       "else": {
-        "description": "A decision that carries no capability has nothing to execute, route or gate.",
+        "description": "A decision that carries no capability executes nothing, routes nothing and gates nothing, so only these outcomes are meaningful: the validated decision stands, policy refused it, or it could not be validated.",
         "properties": {
           "capability_validation": false,
           "route": false,
           "approvals": { "maxItems": 0 },
           "grants": { "maxItems": 0 },
           "intent": false,
-          "outcome": { "const": "NO_EXECUTION" }
+          "outcome": { "enum": ["NO_EXECUTION", "DENIED", "INVALID"] }
         }
+      }
+    },
+    {
+      "description": "NO_EXECUTION says the decision was permitted, so it cannot carry a refusing verdict.",
+      "if": {
+        "required": ["outcome"],
+        "properties": { "outcome": { "const": "NO_EXECUTION" } }
+      },
+      "then": {
+        "properties": { "policy": { "properties": { "verdict": { "enum": ["ALLOW", "MODIFY"] } } } }
       }
     },
     {
@@ -209,7 +219,11 @@
       "properties": {
         "context_id": { "type": "string", "minLength": 1 },
         "proposal_digest": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
-        "capability_version": { "type": "string", "minLength": 1 },
+        "capability_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The registry version of the capability under validation, or `not-applicable` for a decision that carries none."
+        },
         "validated_at": { "type": "string", "format": "date-time" }
       },
       "additionalProperties": false

@@ -401,6 +401,39 @@ impl DecisionEnvelope {
                     .to_string(),
             });
         }
+        // A decision with no capability has no approval gate to wait on and no
+        // route to select, so only three outcomes are meaningful: the decision
+        // stands, policy refused it, or it could not be validated.
+        if !requires_capability
+            && matches!(
+                self.outcome,
+                EnvelopeOutcome::Pending | EnvelopeOutcome::NoRoute
+            )
+        {
+            return Err(ContractError::InvalidValue {
+                field: "outcome",
+                reason: format!(
+                    "a {:?} decision has no capability, so it has no approval gate (PENDING) \
+                     and no route (NO_ROUTE)",
+                    self.proposal.decision
+                ),
+            });
+        }
+        // NO_EXECUTION claims the decision was permitted; a refusal verdict with
+        // it is a contradiction, not a shape to tolerate.
+        if self.outcome == EnvelopeOutcome::NoExecution
+            && !matches!(
+                self.policy.verdict,
+                PolicyDecisionKind::Allow | PolicyDecisionKind::Modify
+            )
+        {
+            return Err(ContractError::InvalidValue {
+                field: "policy.verdict",
+                reason: "NO_EXECUTION says the decision was permitted, so it cannot carry a \
+                         refusing verdict"
+                    .to_string(),
+            });
+        }
 
         if let Some(route) = &self.route {
             route.validate()?;

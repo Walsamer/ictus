@@ -45,10 +45,13 @@ pub const ENVELOPE_SCHEMA_VERSION: u32 = 2;
 /// The frozen v1 `DecisionEnvelope` shape, still emitted for capability-bearing
 /// decisions and still accepted on input.
 ///
-/// v1 always carries `capability_validation`, so it can only describe a
-/// capability-bearing decision. Its meaning is unchanged: no field was added,
-/// removed or reinterpreted, and a v1 envelope about a decision without a
-/// capability is invalid under both versions.
+/// v1 always carries `capability_validation`, so it describes only a
+/// capability-bearing decision. Its fields, its requirements and its output for
+/// those decisions are unchanged; exactly one thing narrowed, deliberately: v1
+/// no longer accepts a capability claim on a decision that carries none
+/// (`ESCALATE`, `ABORT`, `DECOMPOSE`), because such a claim is the fabricated
+/// validation this contract exists to refuse. The previous build accepted it
+/// and the composition emitted it for a `DECOMPOSE` carrying a capability.
 pub const LEGACY_ENVELOPE_SCHEMA_VERSION: u32 = 1;
 
 /// Accept both `DecisionEnvelope` versions this build writes.

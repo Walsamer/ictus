@@ -216,12 +216,15 @@ execution, and Fleet owns Fleet state. M4 adds **no** runtime coupling.
 - **Decision:** `capability_validation` is required exactly for the decisions
   that carry a capability (`EXECUTE_CAPABILITY`, `REEXECUTE`, `ROUTE`) and must
   be absent for `ESCALATE`, `ABORT` and `DECOMPOSE`, which resolve to the new
-  `NO_EXECUTION` outcome, carry no intent and bind no approvals, grants or
-  route. The condition is expressed in `contracts/decision-envelope.schema.json`
+  `NO_EXECUTION` outcome when policy permits them (and stay `DENIED` or
+  `INVALID` when it refuses them), carry no intent and bind no approvals, grants
+  or route. The condition is expressed in `contracts/decision-envelope.schema.json`
   itself. The envelope contract is at `schema_version: 2`; the frozen `1` is
   still emitted for a capability-bearing decision (byte-identical output) and
-  still accepted on input, while v2 is accepted for either kind. Unknown
-  versions fail closed. Recorded in
+  still accepted on input, while v2 is accepted for either kind. One thing
+  narrowed in v1 on purpose: a v1 envelope claiming a capability for
+  `ESCALATE`, `ABORT` or `DECOMPOSE` is now a contract error. Unknown versions
+  fail closed. Recorded in
   `docs/adr/0003-decision-envelope-v2-conditional-capability.md`.
 - **Why:** without it, the decision where a human authorizes something could not
   cross the validated envelope (`missing required field:

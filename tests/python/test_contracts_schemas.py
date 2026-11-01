@@ -40,6 +40,7 @@ SCHEMA_EXAMPLE_PAIRS = [
     ("decision-envelope.schema.json", "decision-envelope.denied.json"),
     ("decision-envelope.schema.json", "decision-envelope.pending.json"),
     ("decision-envelope.schema.json", "decision-envelope.escalated.json"),
+    ("decision-envelope.schema.json", "decision-envelope.aborted.json"),
 ]
 
 # Only the DecisionProposal and DecisionEnvelope contracts carry more than one
@@ -365,6 +366,51 @@ def test_a_decision_without_a_capability_binds_no_approvals_or_route() -> None:
 def test_an_unknown_envelope_version_is_rejected() -> None:
     payload = _example("decision-envelope.executable.json")
     payload["schema_version"] = 3
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_a_refused_decision_without_a_capability_is_denied_or_invalid() -> None:
+    # Policy can refuse such a decision, or its context can be invalid; the
+    # envelope must be able to say so, exactly as the Rust validator allows.
+    for outcome in ("DENIED", "INVALID"):
+        payload = _example("decision-envelope.escalated.json")
+        payload["outcome"] = outcome
+        payload["policy"]["verdict"] = "DENY"
+        _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_a_decision_without_a_capability_has_no_approval_gate_and_no_route() -> None:
+    # PENDING is an unsatisfied approval on a capability and NO_ROUTE is a route
+    # for a capability; neither describes a decision that carries none.
+    for outcome, verdict in (("PENDING", "REQUIRE_APPROVAL"), ("NO_ROUTE", "ALLOW")):
+        payload = _example("decision-envelope.escalated.json")
+        payload["outcome"] = outcome
+        payload["policy"]["verdict"] = verdict
+        with pytest.raises(ValidationError):
+            _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_no_execution_cannot_carry_a_refusing_verdict() -> None:
+    payload = _example("decision-envelope.escalated.json")
+    payload["policy"]["verdict"] = "DENY"
+    with pytest.raises(ValidationError):
+        _validator("decision-envelope.schema.json").validate(payload)
+
+    payload["policy"]["verdict"] = "MODIFY"
+    _validator("decision-envelope.schema.json").validate(payload)
+
+
+def test_v1_stops_accepting_a_capability_claim_on_a_decision_without_one() -> None:
+    # The one narrowing of v1: a capability claim on ESCALATE/ABORT/DECOMPOSE is
+    # now a contract error in either version.
+    payload = _example("decision-envelope.escalated.json")
+    payload["schema_version"] = 1
+    payload["capability_validation"] = _example("decision-envelope.executable.json")[
+        "capability_validation"
+    ]
+    payload["outcome"] = "INVALID"
+    payload["policy"]["verdict"] = "DENY"
     with pytest.raises(ValidationError):
         _validator("decision-envelope.schema.json").validate(payload)
 

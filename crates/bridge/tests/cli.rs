@@ -759,6 +759,30 @@ fn decide_context_exhausted_budget_escalates_through_the_envelope() {
 }
 
 #[test]
+fn decide_context_abort_on_exhaustion_crosses_the_envelope() {
+    // The second reproduction of the defect: `abort_on_exhaustion` resolves to
+    // ABORT, which also carries no capability.
+    let input = patched(RECOVERY_CONTEXT, |context| {
+        set_fact(context, "attempts.semantic", serde_json::json!(2));
+        context["attempts"]["semantic_attempts"] = serde_json::json!(2);
+        context["snapshot"]["constraints"] = serde_json::json!(["abort_on_exhaustion"]);
+    });
+    let out = run(&["decide", "--context"], &input, &[]);
+    assert_eq!(
+        out.status.code(),
+        Some(3),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let printed = envelope(&out);
+    printed.validate().unwrap();
+    assert_eq!(printed.proposal.decision, DecisionKind::Abort);
+    assert_eq!(printed.outcome, EnvelopeOutcome::NoExecution);
+    assert_eq!(printed.schema_version, 2);
+    assert!(printed.capability_validation.is_none() && printed.intent.is_none());
+}
+
+#[test]
 fn decide_context_rejects_an_unreadable_grants_file() {
     let out = run(
         &[
