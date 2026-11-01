@@ -24,7 +24,7 @@ pub mod validation;
 pub use approval::{AlwaysApproved, NeverApproved, TokenApprovalProvider};
 pub use composition::{
     revalidate_modified_intent, LocalPolicyComposition, TrustedDecision, ValidationRequest,
-    DEFAULT_POLICY_VERSION,
+    DEFAULT_POLICY_VERSION, NO_CAPABILITY_VERSION,
 };
 pub use evaluator::DefaultPolicyEvaluator;
 pub use intent::{build_execution_intent, build_routed_execution_intent};
