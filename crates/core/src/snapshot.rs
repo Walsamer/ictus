@@ -130,6 +130,26 @@ impl StateSnapshot {
         self.fact(key).and_then(|value| value.as_i64())
     }
 
+    /// Deterministic content digest of this snapshot: the lowercase hex
+    /// SHA-256 of its canonical JSON form.
+    ///
+    /// The canonical form is the compact serialization of the *value* form, so
+    /// every object is written with its keys sorted (`serde_json` maps are
+    /// ordered) and no whitespace, encoded as UTF-8. The same snapshot always
+    /// digests to the same string, and changing any fact, id, timestamp or
+    /// capability changes it. A consumer compares this against the digest it
+    /// recorded for the snapshot it decided from; Ictus never accepts a
+    /// digest as input.
+    pub fn content_digest(&self) -> String {
+        use sha2::{Digest, Sha256};
+
+        let value = serde_json::to_value(self).expect("a StateSnapshot is always serializable");
+        let canonical = serde_json::to_vec(&value).expect("a JSON value is always serializable");
+        let mut hasher = Sha256::new();
+        hasher.update(&canonical);
+        format!("{:x}", hasher.finalize())
+    }
+
     /// Structural validation independent of any policy.
     pub fn validate(&self) -> Result<(), ContractError> {
         ContractError::check_version(self.schema_version)?;
@@ -138,5 +158,78 @@ impl StateSnapshot {
         ContractError::require_non_empty("subject.kind", &self.subject.kind)?;
         ContractError::require_non_empty("subject.id", &self.subject.id)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Fact, StateSnapshot, Subject};
+
+    fn snapshot() -> StateSnapshot {
+        StateSnapshot::new(
+            "snap-1",
+            "2026-10-01T00:00:00Z",
+            "software",
+            Subject::new("task", "t1"),
+        )
+        .with_fact(Fact::integer("attempts.semantic", 0))
+        .with_capability("demo.verify")
+    }
+
+    #[test]
+    fn content_digest_is_sha256_of_the_canonical_form() {
+        // Pinned vector. The canonical form is this exact text: object keys
+        // sorted alphabetically, compact separators, UTF-8. Any change to key
+        // ordering, separators or hashing fails here, which is what keeps two
+        // Ictus boundaries from silently disagreeing about a snapshot.
+        //
+        // {"capabilities":["demo.verify"],"constraints":[],"domain":"software",
+        //  "facts":[{"key":"attempts.semantic","value":0}],"schema_version":1,
+        //  "snapshot_id":"snap-1","subject":{"id":"t1","type":"task"},
+        //  "timestamp":"2026-10-01T00:00:00Z"}
+        assert_eq!(
+            snapshot().content_digest(),
+            "38a4835e821a6e9c7ff1f257b0a7ca4459c0f9d6f7bbcc06d543a31f35eac86e"
+        );
+    }
+
+    #[test]
+    fn content_digest_is_stable_and_lowercase_hex() {
+        let first = snapshot().content_digest();
+        let second = snapshot().content_digest();
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 64);
+        assert!(first
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
+    }
+
+    #[test]
+    fn changing_one_fact_changes_the_digest() {
+        let base = snapshot().content_digest();
+        for mutated in [
+            snapshot().with_fact(Fact::integer("attempts.step_retries", 1)),
+            snapshot().with_constraint("approval_required"),
+            StateSnapshot {
+                timestamp: "2026-10-01T00:00:01Z".to_string(),
+                ..snapshot()
+            },
+            StateSnapshot {
+                subject: Subject::new("task", "t2"),
+                ..snapshot()
+            },
+        ] {
+            assert_ne!(mutated.content_digest(), base);
+        }
+        // Changing a fact's value (not just adding one) also changes it.
+        let revalued = StateSnapshot::new(
+            "snap-1",
+            "2026-10-01T00:00:00Z",
+            "software",
+            Subject::new("task", "t1"),
+        )
+        .with_fact(Fact::integer("attempts.semantic", 1))
+        .with_capability("demo.verify");
+        assert_ne!(revalued.content_digest(), base);
     }
 }
