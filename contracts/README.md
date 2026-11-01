@@ -3,9 +3,12 @@
 Every externally serialized payload in this directory carries
 `schema_version`. `schema_version` is per-contract: the base contracts are at
 `1`, the `DecisionProposal` contract is at `2` (see
-`docs/adr/0001-generic-decision-vocabulary.md`), and the initial/recovery
-`DecisionContext` and validated `DecisionEnvelope` contracts
-(`docs/adr/0002-initial-recovery-context-and-decision-envelope.md`) are at `1`.
+`docs/adr/0001-generic-decision-vocabulary.md`), the initial/recovery
+`DecisionContext` contract is at `1`
+(`docs/adr/0002-initial-recovery-context-and-decision-envelope.md`), and the
+validated `DecisionEnvelope` contract is at `2` with the frozen `1` still
+accepted and still emitted for a capability-bearing decision
+(`docs/adr/0003-decision-envelope-v2-conditional-capability.md`).
 Breaking changes require a new version; adapters may support multiple versions
 during a migration, and new wire versions change only when required.
 
@@ -16,7 +19,7 @@ during a migration, and new wire versions change only when required.
 | ExecutionObservation | `observation.schema.json` | `ictus_core::ExecutionObservation` | `result_mapping.result_to_observation` |
 | DecisionProposal | `proposal.schema.json` | `ictus_core::DecisionProposal` | — (v2; v1 input accepted) |
 | PolicyDecision | `policy-decision.schema.json` | `ictus_core::PolicyDecision` | — |
-| DecisionEnvelope | `decision-envelope.schema.json` | `ictus_core::DecisionEnvelope` | — (validated output of `decide --context`) |
+| DecisionEnvelope | `decision-envelope.schema.json` | `ictus_core::DecisionEnvelope` | — (validated output of `decide --context`; v2, with frozen v1 still emitted for a capability-bearing decision) |
 | ExecutionIntent | `execution-intent.schema.json` | `ictus_core::ExecutionIntent` | bridge input |
 | ExecutionReceipt | `execution-receipt.schema.json` | `ictus_ports::ExecutionReceipt` | durable submit acknowledgement |
 | ExecutionStatus | `execution-status.schema.json` | — (read model) | durable query/cancel reconciliation |
@@ -40,11 +43,12 @@ exact example payloads documented in `docs/CONTRACTS_AND_BOUNDARIES.md`.
 The Python test `tests/python/test_contracts_schemas.py` validates the same
 examples against these schemas with `jsonschema`.
 
-### DecisionContext and DecisionEnvelope (v1)
+### DecisionContext and DecisionEnvelope (v1 and v2)
 
 `decision-context.schema.json` and `decision-envelope.schema.json` are the
-generic serialization a consumer such as Tactus exchanges. Both start at
-`schema_version: 1` and are versioned independently of the base contracts.
+generic serialization a consumer such as Tactus exchanges. Both are versioned
+independently of the base contracts: the context is at `schema_version: 1`, and
+the envelope is at `2` with its frozen `1` still accepted and still emitted.
 
 - A `DecisionContext` is an **initial** or **recovery** input built from a
   `StateSnapshot`, a subject revision, a semantic attempt budget, facts and
@@ -55,8 +59,15 @@ recovery; a `RECOVERY` context must bind the failed attempt and its snapshot.
   backend step retries) is separate. Missing or invalid values fail closed.
 - A `DecisionEnvelope` binds the subject, snapshot digest/revision, proposal and
   policy identity/version/verdict, capability validation, route, approvals, the
-  resolved `outcome` and an expiry. Only `EXECUTABLE` may carry an
-  `ExecutionIntent`; `DENIED`, `PENDING`, `NO_ROUTE` and `INVALID` carry none.
+  resolved `outcome` and an expiry. `schema_version: 1` is the frozen
+  capability-bearing shape and always carries `capability_validation`;
+  `schema_version: 2` carries it exactly when the decision carries a capability,
+  so `EXECUTE_CAPABILITY`, `REEXECUTE` and `ROUTE` carry one and `ESCALATE`,
+  `ABORT` and `DECOMPOSE` carry none. A decision that carries none resolves to
+  `NO_EXECUTION` and binds no approvals, grants, route or intent; a capability
+  claim on it is a contract error, not a tolerated extra field. Only
+  `EXECUTABLE` may carry an `ExecutionIntent`; `DENIED`, `PENDING`, `NO_ROUTE`,
+  `INVALID` and `NO_EXECUTION` carry none. Unknown versions fail closed.
 
 The Rust and Python halves agree: `crates/core/tests/contracts_json.rs` parses
 the exact example files that `tests/python/test_contracts_schemas.py` validates

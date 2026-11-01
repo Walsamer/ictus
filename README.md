@@ -231,9 +231,15 @@ assembles its own observation in a harness script (Tactus
 `src/tactus/application/execution_cycle.py`,
 `scripts/validate_execution_slice.py`), which is that repository's change.
 
-One limit on the envelope: a decision that requires no capability (`ESCALATE`,
-`ABORT`) cannot cross it, because `capability_validation.capability` is required
-and non-empty; such a proposal fails validation and the CLI prints no envelope.
+The envelope is versioned rather than fixed at one shape: `schema_version: 1` is
+the frozen capability-bearing shape, whose output for `EXECUTE_CAPABILITY`,
+`REEXECUTE` and `ROUTE` is byte-identical to what consumers already read, and
+`schema_version: 2` carries `capability_validation` only when the decision
+carries a capability. `ESCALATE`, `ABORT` and `DECOMPOSE` carry none, so they are
+emitted as v2 with outcome `NO_EXECUTION` and no intent, bound by the same
+subject, snapshot digest, proposal, policy and expiry as an execution. The CLI
+follows: an escalation now makes `ictus decide --context` exit 3 with that
+envelope instead of 2 with nothing.
 The runtime and publication ends are not implemented here either:
 `software.implement` and `software.promote` are explicit fail-closed routes
 (`python/ictus_dagster/workflows.toml`).
