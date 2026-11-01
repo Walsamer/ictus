@@ -218,15 +218,24 @@ the Tactus repository exercises that boundary end to end against a real queued
 Dagster instance, including a process loss between send and receipt (Tactus
 `docs/architecture/END_TO_END_EXECUTION_VALIDATION.md`).
 
-What remains at that boundary is narrower than a contract: **no binary emits a
-`DecisionEnvelope`.** `ictus decide` still reads a `StateSnapshot` and prints
-`schema_version`, `proposal`, `policy_decision` and `execution_intent`, so the
-validated-envelope authorization contract is unwired. The `ExecutionResult` →
-`ExecutionObservation` conversion exists in Rust
-(`crates/core/src/execution.rs`, `to_observation`) but is not exposed by the
-Python bridge, so Tactus assembles that envelope itself in a harness shim. The
-runtime and publication ends are not implemented here: `software.implement` and
-`software.promote` are explicit fail-closed routes
+The wire exists on this side too. `ictus decide --context` reads a
+`DecisionContext` and prints the validated `DecisionEnvelope`, computing the
+snapshot digest itself (`crates/core/src/snapshot.rs`,
+`StateSnapshot::content_digest`); `ictus_dagster.result_to_observation`
+(`python/ictus_dagster/adapters/result_mapping.py`) derives the
+`ExecutionObservation` from a validated `ExecutionResult`, and the durable query
+path reports the run's own start and end times instead of inventing them. The
+control plane has not switched yet: it still admits the legacy
+`{schema_version, proposal, policy_decision, execution_intent}` triple and
+assembles its own observation in a harness script (Tactus
+`src/tactus/application/execution_cycle.py`,
+`scripts/validate_execution_slice.py`), which is that repository's change.
+
+One limit on the envelope: a decision that requires no capability (`ESCALATE`,
+`ABORT`) cannot cross it, because `capability_validation.capability` is required
+and non-empty; such a proposal fails validation and the CLI prints no envelope.
+The runtime and publication ends are not implemented here either:
+`software.implement` and `software.promote` are explicit fail-closed routes
 (`python/ictus_dagster/workflows.toml`).
 
 The shared plan is [GitHub Issues](https://github.com/Walsamer/ictus/issues), grouped

@@ -4,10 +4,10 @@ Inspected main: `833175d88adeed59f8e62c14c5e5577580cfdf33`, 2026-10-06.
 Historical M0–M3 completion referred to repository foundation, Dagster demos,
 typed core and stdio bridge. Those numbers are not the new shared milestones.
 
-The Tactus-facing surface was re-inspected at main `c140af3`, 2026-11-01: its
-contracts and its durable submission boundary exist and are tested, but they are
-unwired at the binary and Python-bridge boundary. See
-"Missing for the complete Tactus path".
+The Tactus-facing surface was re-inspected at main `c140af3`, 2026-11-01 and
+wired on this side the same day: `ictus decide --context` emits the validated
+`DecisionEnvelope` and `ictus_dagster.result_to_observation` derives the
+observation. What remains is listed below.
 
 ## Implemented and retained
 
@@ -37,29 +37,24 @@ closed as history.
 
 ## Missing for the complete Tactus path
 
-The contracts are not the gap. `contracts/decision-context.schema.json`,
-`contracts/decision-envelope.schema.json`, `examples/decision-envelope.*.json`,
-`crates/core/src/envelope.rs` and `crates/policy/src/composition.rs` implement
-initial/recovery contexts and validated envelopes bound to subject, revision,
-policy and grants, and `crates/core/tests/contracts_json.rs`,
-`crates/core/tests/contracts_api.rs` and
-`tests/python/test_contracts_schemas.py` cover them. What is missing is the wire
-between those contracts and Tactus:
+The contracts exist, the Rust and schema tests cover them, and this repository
+emits both of them now: the envelope from `ictus decide --context`
+(`crates/bridge/src/main.rs`) and the observation from
+`ictus_dagster.result_to_observation`
+(`python/ictus_dagster/adapters/result_mapping.py`). What remains:
 
-- **No binary emits a `DecisionEnvelope`.** `crates/bridge/src/main.rs` offers
-  `decide`, `execute`, `submit` and `flow`; `decide` reads a `StateSnapshot` and
-  prints `schema_version`, `proposal`, `policy_decision` and `execution_intent`.
-  Tactus therefore admits that legacy triple on structural and binding checks
-  only (`src/tactus/application/execution_cycle.py`,
-  `parse_execution_decision`) and translates its canonical attempt facts onto
-  the legacy `retry.*` keys itself
-  (`src/tactus/integrations/ictus/state_snapshot.py`,
-  `to_ictus_legacy_boundary_payload`).
-- **`ExecutionResult` → `ExecutionObservation` is not exposed in Python.**
-  `crates/core/src/execution.rs` (`to_observation`) holds the conversion;
-  `python/ictus_dagster/` never calls it, so Tactus builds the v1 observation
-  envelope itself in `scripts/validate_execution_slice.py`
-  (`_observation_from_result`), documented there as a shim.
+- **The control plane has not switched.** Tactus still admits the legacy
+  `{schema_version, proposal, policy_decision, execution_intent}` triple on
+  structural and binding checks only
+  (`src/tactus/application/execution_cycle.py`, `parse_execution_decision`) and
+  still assembles the observation in a harness script
+  (`scripts/validate_execution_slice.py`, `_observation_from_result`). Its side
+  of the change is tracked in that repository; this one cannot make it.
+- **A decision that requires no capability cannot cross the envelope.**
+  `capability_validation.capability` is required and non-empty, so an
+  `ESCALATE` or `ABORT` proposal fails envelope validation and
+  `decide --context` prints nothing (exit 2, reproduced with an exhausted and an
+  `abort_on_exhaustion` recovery context). The contract question is open.
 - **No shared cross-repository fixtures are held here.** The five-scenario slice
   is proven by the Tactus repository (`Walsamer/tactus#12`), not by fixtures in
   this repository that assert the Rust, Python and Tactus contracts against each
