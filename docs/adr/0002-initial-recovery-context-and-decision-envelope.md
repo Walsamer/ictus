@@ -1,6 +1,7 @@
 # ADR 0002 — Versioned initial/recovery context and validated decision envelope
 
-- **Status:** Accepted — 2026-10-07
+- **Status:** Accepted — 2026-10-07; amended for `DecisionEnvelope` by
+  `docs/adr/0003-decision-envelope-v2-conditional-capability.md`
 - **Supersedes:** none
 - **Related:** `docs/adr/0001-generic-decision-vocabulary.md`;
   `docs/CONTRACTS_AND_BOUNDARIES.md` §1 `DecisionContext` / `DecisionEnvelope`;
@@ -88,6 +89,15 @@ Binding rules:
 
 - `DecisionContext` and `DecisionEnvelope` are `schema_version: 1`
   (`CONTEXT_SCHEMA_VERSION`, `ENVELOPE_SCHEMA_VERSION`).
+- Amended by ADR 0003: `DecisionContext` stays at `1`, but the envelope's
+  capability requirement was made conditional in `schema_version: 2`
+  (`ENVELOPE_SCHEMA_VERSION` is now `2`; the frozen `1` is
+  `LEGACY_ENVELOPE_SCHEMA_VERSION`): `capability_validation` is present exactly
+  when the decision carries a capability, and `ESCALATE` / `ABORT` /
+  `DECOMPOSE` are emitted as v2 with outcome `NO_EXECUTION`. Version `1` is
+  frozen: it always carries `capability_validation`, so it describes only a
+  capability-bearing decision, and its output is byte-identical. Both versions
+  are accepted on input; unknown versions fail closed.
 - `schema_version` stays per-contract. The base contracts remain at `1`; the
   `DecisionProposal` contract remains at `2` from ADR 0001.
 - A new wire version is introduced only when a token or shape genuinely changes.
@@ -106,6 +116,13 @@ Binding rules:
   example files the Python schema tests validate, so the two halves cannot
   silently drift on unknown versions/kinds, bool-vs-integer counts or missing
   bindings.
+- Amended by ADR 0003: the capability requirement is conditional in v2, and a
+  decision that carries no capability (`ESCALATE`, `ABORT`, `DECOMPOSE`) now
+  crosses the envelope with outcome `NO_EXECUTION` instead of failing
+  validation, so the outcome vocabulary gained one token and a consumer that
+  pinned `schema_version: 1` must accept `2`. Nothing above changes for a
+  capability-bearing decision: v1 emission stays byte-identical, no proposal or
+  policy contract changed, and the frozen decision kinds are untouched.
 
 ## Non-goals / explicit exclusions
 

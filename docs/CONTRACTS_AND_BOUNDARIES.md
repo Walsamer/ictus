@@ -219,7 +219,7 @@ A validated, portable record of the decision. It is the object a consumer may
 act on; it binds every fact needed to reconstruct *why* an intent is
 legitimate.
 
-Conceptual shape:
+Conceptual shape of a capability-bearing envelope:
 
 ```json
 {
@@ -240,18 +240,42 @@ Conceptual shape:
 }
 ```
 
+`schema_version` is `1` for a capability-bearing decision (`EXECUTE_CAPABILITY`,
+`REEXECUTE`, `ROUTE`) — the frozen shape above, byte-identical to what consumers
+already read — and `2` for a decision that carries no capability (`ESCALATE`,
+`ABORT`, `DECOMPOSE`). `capability_validation` is present exactly when the
+decision carries a capability: a decision that carries none has nothing to admit
+or permit, so a capability claim on it is a contract error rather than a
+tolerated extra field, and `validation.capability_version` reads
+`not-applicable`.
+
+A non-capability envelope binds no `approvals`, no `grants` and no `route` (each
+of those binds a capability), carries no `intent`, and resolves to
+`NO_EXECUTION`. Everything else binds identically — subject, snapshot
+id/revision and Ictus-computed digest, proposal identity/version/decision,
+policy identity/version/verdict, the SHA-256 digest of the canonical proposal
+bytes, the validation timestamp and the expiry — so an escalation is as
+verifiable as an execution. Both versions are accepted on input; unknown
+versions fail closed.
+
 The `outcome` is the resolved gate: `EXECUTABLE`, `DENIED`, `PENDING`,
-`NO_ROUTE` or `INVALID`. It is derived from the policy verdict and route
-resolution, and is never inferred from the presence of an intent.
+`NO_ROUTE`, `INVALID` or `NO_EXECUTION`. It is derived from the policy verdict
+and route resolution, and is never inferred from the presence of an intent.
+`NO_EXECUTION` is not a refusal: the decision was validated and permitted, it
+carries no capability, nothing reaches an execution backend, and the consumer
+acts on `proposal.decision` — hand to a human, stop, decompose.
 
 Binding rules:
 
 - The envelope binds the subject, the snapshot digest/revision, the proposal
   identity and version, the policy identity and version, the verdict, the
-  capability validation, the route, the approvals and an expiry.
+  capability validation, the route, the approvals and an expiry. The capability
+  validation, the route and the approvals bind only when the decision carries a
+  capability; the rest binds in both versions.
 - Only `EXECUTABLE` may carry an `ExecutionIntent`. `DENIED`, `PENDING`,
-  `NO_ROUTE` and `INVALID` carry no intent, so a denial, a pending approval or a
-  missing route can never accidentally ship an executable command.
+  `NO_ROUTE`, `INVALID` and `NO_EXECUTION` carry no intent, so a denial, a
+  pending approval, a missing route or an escalation can never accidentally ship
+  an executable command.
 - An `EXECUTABLE` intent must reference the same capability the envelope
   validated and the same subject the snapshot was taken for; the intent is
   revalidated when the envelope is validated.
@@ -274,6 +298,10 @@ The vocabulary in the envelope stays generic. The decision kinds carried by
 `proposal.decision` are exactly the six frozen tokens (including `REEXECUTE`,
 `ROUTE`, `DECOMPOSE`, `ESCALATE`, `ABORT`, `EXECUTE_CAPABILITY`); a new wire
 version is introduced only when a token or shape genuinely changes.
+
+The outcome vocabulary grew by one token in envelope v2: `NO_EXECUTION`, which a
+consumer must add while keeping unknown-outcome handling fail-closed. That is a
+contract change carried by a version, not a silent reinterpretation of v1.
 
 ---
 
