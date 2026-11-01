@@ -57,15 +57,6 @@ class AttemptRequest:
     step_budget: int
     workspace: WorkspaceRef
 
-    def to_json(self) -> dict[str, Any]:
-        return {
-            "capability": self.capability,
-            "write_scope": list(self.write_scope),
-            "wall_clock_seconds": self.wall_clock_seconds,
-            "step_budget": self.step_budget,
-            "workspace": self.workspace.to_json(),
-        }
-
 
 @runtime_checkable
 class RuntimeBackend(Protocol):
