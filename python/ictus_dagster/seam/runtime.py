@@ -78,13 +78,11 @@ def resolve_backend(reference: str) -> RuntimeBackend:
     return backend
 
 
-def open_seam(
-    *, capability: str, seam_config_path: str | None
-) -> Seam | None:
+def open_seam(*, seam_config_path: str | None) -> Seam | None:
     """Return the configured seam, or ``None`` when nothing is configured.
 
-    ``capability`` is accepted for log context and reserved for future
-    per-capability bindings; the config file currently names one backend.
+    The config file names one backend; a per-capability binding would be a
+    config version change, not a code path here.
     """
     config = load_seam_config(seam_config_path)
     if config is None:
@@ -101,7 +99,7 @@ def _require_seam(
 ) -> Seam:
     """Open the seam, or fail closed exactly as the placeholder always has."""
     try:
-        seam = open_seam(capability=capability, seam_config_path=seam_config_path)
+        seam = open_seam(seam_config_path=seam_config_path)
     except SeamConfigError as exc:
         raise seam_failure(
             job_name=job_name,
