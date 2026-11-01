@@ -1,0 +1,12 @@
+{
+  "isolates": {
+    "worktree": {
+      "setup": ["uv sync --frozen", "cargo fetch"]
+    }
+  },
+  "lander": {
+    "checks": [
+      { "command": "./scripts/verify.sh", "timeout": 900 }
+    ]
+  }
+}
