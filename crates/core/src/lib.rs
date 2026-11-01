@@ -51,6 +51,7 @@ pub use routing::{
 };
 pub use snapshot::{Fact, StateSnapshot, Subject};
 pub use version::{
-    check_contract_version, ContractError, CONTEXT_SCHEMA_VERSION, DECISION_SCHEMA_VERSION,
-    ENVELOPE_SCHEMA_VERSION, LEGACY_DECISION_SCHEMA_VERSION, SCHEMA_VERSION,
+    check_contract_version, check_envelope_version, ContractError, CONTEXT_SCHEMA_VERSION,
+    DECISION_SCHEMA_VERSION, ENVELOPE_SCHEMA_VERSION, LEGACY_DECISION_SCHEMA_VERSION,
+    LEGACY_ENVELOPE_SCHEMA_VERSION, SCHEMA_VERSION,
 };
