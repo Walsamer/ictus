@@ -23,6 +23,21 @@ OBSERVATION_CATEGORIES = {
     "UNKNOWN",
 }
 
+#: Properties the ExecutionObservation contract declares, mirroring
+#: ``contracts/observation.schema.json``.  Published so a caller can see the
+#: envelope it is handed without reading the schema.
+OBSERVATION_FIELDS = {
+    "schema_version",
+    "observation_id",
+    "execution_id",
+    "intent_id",
+    "category",
+    "message",
+    "evidence",
+    "observed_at",
+    "retryable",
+}
+
 EXECUTION_STATUSES = {"succeeded", "failed", "timed_out", "cancelled"}
 
 # Reconciliation state of an ExecutionStatus: pending until the run is terminal.
@@ -129,6 +144,40 @@ def validate_result(payload: dict[str, Any]) -> dict[str, Any]:
     category = _require(observation, "category", str)
     if category not in OBSERVATION_CATEGORIES:
         raise ContractError(f"unknown observation category: {category}")
+    return payload
+
+
+def validate_observation(payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate an ExecutionObservation payload and return it unchanged.
+
+    An observation is the fact an execution produced.  The required fields are
+    the ones ``contracts/observation.schema.json`` marks required, and
+    ``observed_at`` is one of them: an observation without a timestamp cannot
+    be ordered against the decisions it feeds.  Like the schema, which does not
+    close the object, properties beyond :data:`OBSERVATION_FIELDS` are carried
+    through untouched.
+
+    This validator is deliberately stricter than the Rust mirror in
+    ``crates/core/src/observation.rs``, whose ``validate()`` does not check
+    ``observed_at``.  The Rust side stays as it is; the Python boundary refuses
+    an unobservable observation rather than accepting one.
+    """
+    if not isinstance(payload, dict):
+        raise ContractError("ExecutionObservation must be a JSON object")
+    version = _require(payload, "schema_version", int)
+    if version != SCHEMA_VERSION:
+        raise ContractError(
+            f"unsupported schema_version {version}; supported is {SCHEMA_VERSION}"
+        )
+    for field in ("observation_id", "execution_id", "intent_id", "observed_at"):
+        value = _require(payload, field, str)
+        if not value.strip():
+            raise ContractError(f"{field} must be non-empty")
+    category = _require(payload, "category", str)
+    if category not in OBSERVATION_CATEGORIES:
+        raise ContractError(f"unknown observation category: {category}")
+    if "evidence" in payload:
+        _require(payload, "evidence", list)
     return payload
 
 

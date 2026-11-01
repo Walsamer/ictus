@@ -113,6 +113,17 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def _iso(timestamp: Any) -> str | None:
+    """Format a Dagster epoch-seconds timestamp as an ISO-8601 UTC instant."""
+    if not isinstance(timestamp, (int, float)):
+        return None
+    return (
+        datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
+
+
 def intent_digest(payload: dict[str, Any]) -> str:
     """Return the stable digest used to bind an identity to immutable intent."""
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
@@ -439,6 +450,23 @@ def _require_known_run(instance: DagsterInstance, run_id: str) -> Any:
     return run
 
 
+def _run_record_times(instance: DagsterInstance, run: Any) -> tuple[str | None, str | None]:
+    """Return the run's real start/finish times as ISO-8601, when Dagster has them.
+
+    ``DagsterRun`` carries no timestamps (Dagster 1.13.x); the instance's run
+    record does, filled from the ``RUN_START`` and terminal events.  A run the
+    backend has no record for, or a run that never started, yields ``None`` for
+    the missing side rather than a manufactured wall-clock time.
+    """
+    records = instance.get_run_records(filters=RunsFilter(run_ids=[run.run_id]), limit=1)
+    if not records:
+        return None, None
+    record = records[0]
+    return _iso(getattr(record, "start_time", None)), _iso(
+        getattr(record, "end_time", None)
+    )
+
+
 def _status_envelope(
     instance: DagsterInstance,
     run: Any,
@@ -454,6 +482,7 @@ def _status_envelope(
     status_name = _status_name(run)
     if status_name in TERMINAL_RUN_STATUSES:
         failed_step, failure_category = _failed_step(instance, run.run_id)
+        started_at, finished_at = _run_record_times(instance, run)
         response["state"] = "terminal"
         response["result"] = execution_result_from_run(
             execution_id=run.run_id,
@@ -462,6 +491,8 @@ def _status_envelope(
             run_status=status_name,
             failed_step=failed_step,
             failure_category=failure_category,
+            started_at=started_at,
+            finished_at=finished_at,
             evidence=[
                 {"kind": "dagster_run", "uri": f"dagster://runs/{run.run_id}"},
                 {"kind": "dagster_event_log", "uri": f"dagster://runs/{run.run_id}/events"},

@@ -1,20 +1,25 @@
-"""Dagster run outcome -> generic ExecutionResult mapping."""
+"""Dagster run outcome -> generic ExecutionResult and ExecutionObservation."""
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
+from ictus_dagster import submission
 from ictus_dagster.adapters.contracts import ContractError, validate_result
-from ictus_dagster.adapters.result_mapping import execution_result_from_run
+from ictus_dagster.adapters.result_mapping import (
+    execution_result_from_run,
+    result_to_observation,
+)
 from conftest import CONTRACTS_DIR
 
 
-def _result_schema() -> Draft202012Validator:
+def _schema(name: str) -> Draft202012Validator:
     schemas = {
         path.name: json.loads(path.read_text())
         for path in CONTRACTS_DIR.glob("*.schema.json")
@@ -22,9 +27,11 @@ def _result_schema() -> Draft202012Validator:
     registry = Registry().with_resources(
         [(s["$id"], Resource.from_contents(s)) for s in schemas.values()]
     )
-    return Draft202012Validator(
-        schemas["execution-result.schema.json"], registry=registry
-    )
+    return Draft202012Validator(schemas[name], registry=registry)
+
+
+def _result_schema() -> Draft202012Validator:
+    return _schema("execution-result.schema.json")
 
 
 def test_success_maps_to_success_category() -> None:
@@ -159,3 +166,188 @@ def test_invalid_category_is_rejected() -> None:
                 "observation": {"category": "BOGUS"},
             }
         )
+
+
+# --- ExecutionResult -> ExecutionObservation -------------------------------
+
+FINISHED_AT = "2024-05-01T12:00:00Z"
+
+OBSERVATION_RESULT_CASES = [
+    pytest.param(
+        dict(
+            execution_id="exec-ok",
+            intent_id="intent-ok",
+            success=True,
+            evidence=[{"kind": "dagster_run", "uri": "dagster://runs/exec-ok"}],
+        ),
+        id="success",
+    ),
+    pytest.param(
+        dict(
+            execution_id="exec-crash",
+            intent_id="intent-crash",
+            success=False,
+            failed_step="execute_op",
+            evidence=[
+                {"kind": "dagster_event_log", "uri": "dagster://runs/exec-crash/events"}
+            ],
+        ),
+        id="process-failure",
+    ),
+    pytest.param(
+        dict(
+            execution_id="exec-cancel",
+            intent_id="intent-cancel",
+            success=False,
+            run_status="CANCELED",
+        ),
+        id="cancellation",
+    ),
+    pytest.param(
+        dict(
+            execution_id="exec-empty",
+            intent_id="intent-empty",
+            success=True,
+            evidence=[],
+        ),
+        id="empty-evidence",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", OBSERVATION_RESULT_CASES)
+def test_result_to_observation_validates_against_the_observation_schema(case) -> None:
+    result = execution_result_from_run(finished_at=FINISHED_AT, **case)
+    observation = result_to_observation(result)
+
+    _schema("observation.schema.json").validate(observation)
+    assert observation["schema_version"] == 1
+    assert observation["observation_id"] == f"ictus-result:{result['execution_id']}"
+    assert observation["execution_id"] == result["execution_id"]
+    assert observation["intent_id"] == result["intent_id"]
+    assert observation["category"] == result["observation"]["category"]
+    assert observation["evidence"] == result["evidence"]
+    assert observation["observed_at"] == FINISHED_AT
+
+
+def test_result_to_observation_accepts_explicit_identity_and_timestamp() -> None:
+    result = execution_result_from_run(
+        execution_id="exec-explicit", intent_id="intent-explicit", success=True
+    )
+    observation = result_to_observation(
+        result, observation_id="observation:1", observed_at=FINISHED_AT
+    )
+    assert observation["observation_id"] == "observation:1"
+    assert observation["observed_at"] == FINISHED_AT
+    assert observation["evidence"] == []
+
+
+def test_result_to_observation_fails_closed_without_a_timestamp() -> None:
+    result = execution_result_from_run(
+        execution_id="exec-untimed", intent_id="intent-untimed", success=True
+    )
+    with pytest.raises(ContractError, match="observed_at"):
+        result_to_observation(result)
+
+
+def test_result_to_observation_rejects_an_invalid_result() -> None:
+    with pytest.raises(ContractError):
+        result_to_observation(
+            {
+                "schema_version": 1,
+                "execution_id": "e",
+                "intent_id": "i",
+                "status": "succeeded",
+                "observation": {"category": "BOGUS"},
+                "finished_at": FINISHED_AT,
+            }
+        )
+
+
+# --- durable query path ----------------------------------------------------
+
+
+class QueuedRunCoordinator:
+    """Double whose class name matches Dagster's supported coordinator."""
+
+
+class _QueryInstance:
+    """Minimal durable-instance double: only what the query path reads."""
+
+    is_ephemeral = False
+    run_launcher = object()
+    run_coordinator = QueuedRunCoordinator()
+
+    def __init__(self, run, records):
+        self._run = run
+        self._records = records
+
+    def get_run_by_id(self, _run_id):
+        return self._run
+
+    def all_logs(self, _run_id):
+        return []
+
+    def get_run_records(self, **_kwargs):
+        return list(self._records)
+
+
+def _terminal_run() -> SimpleNamespace:
+    return SimpleNamespace(
+        run_id="run-times",
+        status="SUCCESS",
+        tags={
+            submission.IDENTITY_TAG: "attempt:times",
+            submission.DIGEST_TAG: "0" * 64,
+            submission.SUBMISSION_TAG: submission.SUBMISSION_PROTOCOL,
+            submission.SUBMITTED_AT_TAG: "2024-05-01T10:00:00Z",
+        },
+        create_timestamp=0.0,
+    )
+
+
+def _record(start, end) -> SimpleNamespace:
+    return SimpleNamespace(
+        start_time=None if start is None else start.timestamp(),
+        end_time=None if end is None else end.timestamp(),
+    )
+
+
+def test_durable_query_reports_the_run_times(monkeypatch) -> None:
+    monkeypatch.setenv("DAGSTER_HOME", "/dagster-home")
+    instance = _QueryInstance(
+        _terminal_run(),
+        [
+            _record(
+                datetime(2024, 5, 1, 11, 0, tzinfo=timezone.utc),
+                datetime(2024, 5, 1, 12, 0, tzinfo=timezone.utc),
+            )
+        ],
+    )
+    status = submission.query_receipt("run-times", instance=instance)
+
+    assert status["result"]["started_at"] == "2024-05-01T11:00:00Z"
+    assert status["result"]["finished_at"] == "2024-05-01T12:00:00Z"
+    # observed_at derives from the run's own end time, never from wall clock.
+    observation = result_to_observation(status["result"])
+    assert observation["observed_at"] == status["result"]["finished_at"]
+    _schema("observation.schema.json").validate(observation)
+
+
+def test_durable_query_manufactures_no_timestamp_the_run_does_not_report(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("DAGSTER_HOME", "/dagster-home")
+    instance = _QueryInstance(_terminal_run(), [_record(None, None)])
+    status = submission.query_receipt("run-times", instance=instance)
+
+    assert "started_at" not in status["result"]
+    assert "finished_at" not in status["result"]
+    with pytest.raises(ContractError, match="observed_at"):
+        result_to_observation(status["result"])
+
+
+def test_run_times_are_absent_without_a_run_record() -> None:
+    instance = SimpleNamespace(get_run_records=lambda **_kwargs: [])
+    run = SimpleNamespace(run_id="gone")
+    assert submission._run_record_times(instance, run) == (None, None)

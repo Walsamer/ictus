@@ -85,6 +85,11 @@ class _Instance:
     def get_run_by_id(self, run_id):
         return next((run for run in self.runs if run.run_id == run_id), None)
 
+    def get_run_records(self, **_kwargs):
+        # Dagster's RunRecord is the only place run start/end times live.
+        # The double reports none, so the query path omits both timestamps.
+        return [SimpleNamespace(start_time=None, end_time=None)]
+
     def all_logs(self, _run_id):
         return list(self.logs)
 
