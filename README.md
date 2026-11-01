@@ -203,9 +203,40 @@ durability guarantees and limitations are documented in
 
 Read [Ictus scope](docs/architecture/BASELINE_V1.md) and the
 [implementation reconciliation](docs/architecture/BASELINE_V1_RECONCILIATION.md).
-The generic foundation and three example domains are implemented. Persistent
-Dagster demos exist; the complete Tactus context/authorization contract and a
-queued, restart-safe execution bridge remain work.
+The generic foundation and three example domains are implemented.
+
+The Tactus-facing decision contracts exist and are covered by tests: the
+versioned schemas `contracts/decision-context.schema.json` and
+`contracts/decision-envelope.schema.json`, their examples in
+`examples/decision-context.*.json` and `examples/decision-envelope.*.json`, and
+the `DecisionEnvelope` builder `LocalPolicyComposition`
+(`crates/policy/src/composition.rs`). Queued, restart-safe submission with
+receipt reconciliation is implemented in `python/ictus_dagster/submission.py`
+and evidenced in
+[`docs/DURABLE_SUBMISSION_VERIFICATION.md`](docs/DURABLE_SUBMISSION_VERIFICATION.md);
+the Tactus repository exercises that boundary end to end against a real queued
+Dagster instance, including a process loss between send and receipt (Tactus
+`docs/architecture/END_TO_END_EXECUTION_VALIDATION.md`).
+
+The wire exists on this side too. `ictus decide --context` reads a
+`DecisionContext` and prints the validated `DecisionEnvelope`, computing the
+snapshot digest itself (`crates/core/src/snapshot.rs`,
+`StateSnapshot::content_digest`); `ictus_dagster.result_to_observation`
+(`python/ictus_dagster/adapters/result_mapping.py`) derives the
+`ExecutionObservation` from a validated `ExecutionResult`, and the durable query
+path reports the run's own start and end times instead of inventing them. The
+control plane has not switched yet: it still admits the legacy
+`{schema_version, proposal, policy_decision, execution_intent}` triple and
+assembles its own observation in a harness script (Tactus
+`src/tactus/application/execution_cycle.py`,
+`scripts/validate_execution_slice.py`), which is that repository's change.
+
+One limit on the envelope: a decision that requires no capability (`ESCALATE`,
+`ABORT`) cannot cross it, because `capability_validation.capability` is required
+and non-empty; such a proposal fails validation and the CLI prints no envelope.
+The runtime and publication ends are not implemented here either:
+`software.implement` and `software.promote` are explicit fail-closed routes
+(`python/ictus_dagster/workflows.toml`).
 
 The shared plan is [GitHub Issues](https://github.com/Walsamer/ictus/issues), grouped
 by the [M0–M5 roadmap](docs/ROADMAP.md). Humans and Fleet use the same intent:

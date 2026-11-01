@@ -1,0 +1,16 @@
+[
+  {
+    "grant_id": "grant-0001",
+    "approval": "human",
+    "subject": { "type": "task", "id": "task-123" },
+    "revision": 2,
+    "capability": "software.promote",
+    "policy_version": "ictus.default.v1",
+    "issued_at": "2026-09-30T00:00:00Z",
+    "expires_at": "2026-10-02T00:00:00Z",
+    "revoked": false,
+    "evidence": [
+      { "kind": "approval_record", "uri": "tactus://approvals/grant-0001" }
+    ]
+  }
+]

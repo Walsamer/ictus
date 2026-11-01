@@ -4,6 +4,11 @@ Inspected main: `833175d88adeed59f8e62c14c5e5577580cfdf33`, 2026-10-06.
 Historical M0–M3 completion referred to repository foundation, Dagster demos,
 typed core and stdio bridge. Those numbers are not the new shared milestones.
 
+The Tactus-facing surface was re-inspected at main `c140af3`, 2026-11-01 and
+wired on this side the same day: `ictus decide --context` emits the validated
+`DecisionEnvelope` and `ictus_dagster.result_to_observation` derives the
+observation. What remains is listed below.
+
 ## Implemented and retained
 
 - Rust generic core, ports, adapters, deterministic rules/policy and JSON schemas.
@@ -12,16 +17,53 @@ typed core and stdio bridge. Those numbers are not the new shared milestones.
 - Persistent DAGSTER_HOME mode and durability/re-execution demo; ephemeral fallback.
 - Format/lint/unit/property tests, Python coverage gate, Rust coverage and mutation CI.
 
-## Integration-only candidate
+## Reconciled Fleet integration candidate
 
-Commit `5ee42ea5602703b8aafd8cab9b88e3feb8347087` on a local Fleet integration ref
-adds generic decision vocabulary, DecisionProposal v2 and RETRY v1 compatibility.
-It is not in inspected GitHub main. Preserve and review it through a dedicated
-implementation PR; architecture documentation does not promote that commit.
+Commit `5ee42ea5602703b8aafd8cab9b88e3feb8347087` added the generic decision
+vocabulary, DecisionProposal v2 and RETRY v1 compatibility. It is not an
+ancestor of `main` here: it is reachable only from the preserved
+`agent/agentic-control/*` and `archive/*` refs. Only its position in history was
+inspected, not its contents.
+
+Its vocabulary is in `main` under a different commit, `248ea92` (Fleet FIX-006):
+`contracts/proposal.schema.json` accepts `schema_version` 1 and 2 with legacy
+`RETRY` normalized to `REEXECUTE`, `crates/core/src/decision.rs` carries the
+`RETRY` serde alias on the `Reexecute` variant, and
+`tests/python/test_contracts_schemas.py` and
+`crates/core/tests/contracts_api.rs` exercise both versions. That `248ea92` is
+this candidate re-landed is **not** proven: the trees differ, and `5ee42ea`
+holds content `248ea92` does not. Nothing here is left to review; the entry is
+closed as history.
 
 ## Missing for the complete Tactus path
 
-- Validated decision/intent binding to subject, revision, policy and real grants.
+The contracts exist, the Rust and schema tests cover them, and this repository
+emits both of them now: the envelope from `ictus decide --context`
+(`crates/bridge/src/main.rs`) and the observation from
+`ictus_dagster.result_to_observation`
+(`python/ictus_dagster/adapters/result_mapping.py`). What remains:
+
+- **The control plane has not switched.** Tactus still admits the legacy
+  `{schema_version, proposal, policy_decision, execution_intent}` triple on
+  structural and binding checks only
+  (`src/tactus/application/execution_cycle.py`, `parse_execution_decision`) and
+  still assembles the observation in a harness script
+  (`scripts/validate_execution_slice.py`, `_observation_from_result`). Its side
+  of the change is tracked in that repository; this one cannot make it.
+- **A decision that requires no capability cannot cross the envelope.**
+  `capability_validation.capability` is required and non-empty, so an
+  `ESCALATE` or `ABORT` proposal fails envelope validation and
+  `decide --context` prints nothing (exit 2, reproduced with an exhausted and an
+  `abort_on_exhaustion` recovery context). The contract question is open.
+- **No shared cross-repository fixtures are held here.** The five-scenario slice
+  is proven by the Tactus repository (`Walsamer/tactus#12`), not by fixtures in
+  this repository that assert the Rust, Python and Tactus contracts against each
+  other.
+- **The runtime and publication capability backends do not exist here.**
+  `software.implement` and `software.promote` are explicit fail-closed routes
+  (`python/ictus_dagster/workflows.toml`,
+  `python/ictus_dagster/jobs/software_agent_job.py`); Tactus issues #22 and #23
+  remain open.
 
 ## Semantic recovery policy
 
@@ -48,11 +90,9 @@ fact identity/revision so Tactus can reject stale admission without reranking.
 Runtime adapters must execute that exact route or report a fact; they cannot
 silently substitute a provider or model. Compatibility callers should migrate
 from `BackendRegistry.compatible()` to `LocalPolicyComposition::validate_with_route_selection`.
-- Persistent asynchronous submission, receipt/reconciliation and result delivery.
-- Cross-repository behavioral fixtures and the five-scenario vertical slice.
 
-The synchronous `execute_in_process` bridge has useful history/correlation but
-does not establish queued, independently launched restart-safe execution.
+The synchronous `execute_in_process` bridge remains the demo path; the queued,
+independently launched restart-safe path is `python/ictus_dagster/submission.py`.
 Rules read the canonical semantic accounting (`attempts.semantic` /
 `attempts.max_semantic`) and escalate on missing/ambiguous values instead of
 silently exhausting a 0/0 budget. Success is tagged `recovery_outcome =

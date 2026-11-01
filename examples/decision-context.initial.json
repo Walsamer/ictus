@@ -11,6 +11,7 @@
     "subject": { "type": "task", "id": "task-123" },
     "facts": [
       { "key": "subject.revision", "value": 1 },
+      { "key": "snapshot.phase", "value": "INITIAL" },
       { "key": "attempts.semantic", "value": 0 },
       { "key": "attempts.max_semantic", "value": 2 },
       { "key": "attempts.step_retries", "value": 0 },

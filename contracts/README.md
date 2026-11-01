@@ -13,10 +13,10 @@ during a migration, and new wire versions change only when required.
 | --- | --- | --- | --- |
 | StateSnapshot | `state-snapshot.schema.json` | `ictus_core::StateSnapshot` | bridge input |
 | DecisionContext | `decision-context.schema.json` | `ictus_core::DecisionContext` | — (initial/recovery input) |
-| ExecutionObservation | `observation.schema.json` | `ictus_core::ExecutionObservation` | result mapping |
+| ExecutionObservation | `observation.schema.json` | `ictus_core::ExecutionObservation` | `result_mapping.result_to_observation` |
 | DecisionProposal | `proposal.schema.json` | `ictus_core::DecisionProposal` | — (v2; v1 input accepted) |
 | PolicyDecision | `policy-decision.schema.json` | `ictus_core::PolicyDecision` | — |
-| DecisionEnvelope | `decision-envelope.schema.json` | `ictus_core::DecisionEnvelope` | — (validated output) |
+| DecisionEnvelope | `decision-envelope.schema.json` | `ictus_core::DecisionEnvelope` | — (validated output of `decide --context`) |
 | ExecutionIntent | `execution-intent.schema.json` | `ictus_core::ExecutionIntent` | bridge input |
 | ExecutionReceipt | `execution-receipt.schema.json` | `ictus_ports::ExecutionReceipt` | durable submit acknowledgement |
 | ExecutionStatus | `execution-status.schema.json` | — (read model) | durable query/cancel reconciliation |

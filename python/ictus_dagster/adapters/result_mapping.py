@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from ictus_dagster.adapters.contracts import SCHEMA_VERSION, validate_result
+from ictus_dagster.adapters.contracts import (
+    SCHEMA_VERSION,
+    ContractError,
+    validate_observation,
+    validate_result,
+)
 
 # Generic, execution-side mapping from a failed step to an observation category.
 # Domain-specific failure taxonomies live in domain adapters, never here.
@@ -85,3 +90,50 @@ def execution_result_from_run(
     if finished_at:
         payload["finished_at"] = finished_at
     return validate_result(payload)
+
+
+def result_to_observation(
+    result: dict[str, Any],
+    *,
+    observation_id: str | None = None,
+    observed_at: str | None = None,
+) -> dict[str, Any]:
+    """Derive the ExecutionObservation envelope from an ExecutionResult.
+
+    This is owner-side conversion only: the identity, category and evidence are
+    copied verbatim from an already validated ``ExecutionResult``, so the
+    observation reports the same facts and introduces no policy.  The two
+    derived values are its own identity and its timestamp.
+
+    ``observation_id`` defaults to ``ictus-result:<execution_id>``.  ``observed_at``
+    defaults to the result's ``finished_at`` and never to the wall clock: a
+    result that carries no ``finished_at`` and no explicit ``observed_at`` fails
+    closed with :class:`ContractError`, because a fabricated timestamp would
+    silently reorder the fact against the decisions that read it.
+    """
+    validate_result(result)
+
+    resolved_observed_at = (
+        observed_at if observed_at is not None else result.get("finished_at")
+    )
+    if not resolved_observed_at:
+        raise ContractError(
+            "ExecutionObservation requires observed_at: the result reports no "
+            "finished_at and none was supplied"
+        )
+    execution_id = result["execution_id"]
+    return validate_observation(
+        {
+            "schema_version": SCHEMA_VERSION,
+            "observation_id": (
+                observation_id
+                if observation_id is not None
+                else f"ictus-result:{execution_id}"
+            ),
+            "execution_id": execution_id,
+            "intent_id": result["intent_id"],
+            "category": result["observation"]["category"],
+            "observed_at": resolved_observed_at,
+            "evidence": list(result.get("evidence") or []),
+        }
+    )
