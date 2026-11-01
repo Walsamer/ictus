@@ -17,12 +17,23 @@ unwired at the binary and Python-bridge boundary. See
 - Persistent DAGSTER_HOME mode and durability/re-execution demo; ephemeral fallback.
 - Format/lint/unit/property tests, Python coverage gate, Rust coverage and mutation CI.
 
-## Integration-only candidate
+## Reconciled Fleet integration candidate
 
-Commit `5ee42ea5602703b8aafd8cab9b88e3feb8347087` on a local Fleet integration ref
-adds generic decision vocabulary, DecisionProposal v2 and RETRY v1 compatibility.
-It is not in inspected GitHub main. Preserve and review it through a dedicated
-implementation PR; architecture documentation does not promote that commit.
+Commit `5ee42ea5602703b8aafd8cab9b88e3feb8347087` added the generic decision
+vocabulary, DecisionProposal v2 and RETRY v1 compatibility. It is not an
+ancestor of `main` here: it is reachable only from the preserved
+`agent/agentic-control/*` and `archive/*` refs. Only its position in history was
+inspected, not its contents.
+
+Its vocabulary is in `main` under a different commit, `248ea92` (Fleet FIX-006):
+`contracts/proposal.schema.json` accepts `schema_version` 1 and 2 with legacy
+`RETRY` normalized to `REEXECUTE`, `crates/core/src/decision.rs` carries the
+`RETRY` serde alias on the `Reexecute` variant, and
+`tests/python/test_contracts_schemas.py` and
+`crates/core/tests/contracts_api.rs` exercise both versions. That `248ea92` is
+this candidate re-landed is **not** proven: the trees differ, and `5ee42ea`
+holds content `248ea92` does not. Nothing here is left to review; the entry is
+closed as history.
 
 ## Missing for the complete Tactus path
 
