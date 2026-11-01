@@ -13,6 +13,16 @@
 //! and invalid outcomes carry no executable intent. An executable envelope's
 //! intent is revalidated as part of [`DecisionEnvelope::validate`], so a
 //! modified proposal is revalidated before execution.
+//!
+//! The envelope is versioned. `capability_validation` exists exactly when the
+//! decision carries a capability: `EXECUTE_CAPABILITY`, `REEXECUTE` and `ROUTE`
+//! are emitted as v1 (byte-identical to before), while `ESCALATE`, `ABORT` and
+//! `DECOMPOSE` — the decisions where a human takes over, the work stops or is
+//! split — are emitted as v2 with no capability, no approvals and no intent, and
+//! resolve to [`EnvelopeOutcome::NoExecution`]. The binding (subject, snapshot
+//! digest and revision, proposal and policy identity/version, the validated
+//! proposal digest and the expiry) is identical in both versions, so an
+//! escalation is as verifiable as an execution.
 
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +32,9 @@ use crate::execution::ExecutionIntent;
 use crate::grant::ApprovalGrant;
 use crate::policy::PolicyDecisionKind;
 use crate::snapshot::Subject;
-use crate::version::{check_contract_version, ContractError, ENVELOPE_SCHEMA_VERSION};
+use crate::version::{
+    check_envelope_version, ContractError, ENVELOPE_SCHEMA_VERSION, LEGACY_ENVELOPE_SCHEMA_VERSION,
+};
 
 /// The resolved effect of a validated decision.
 ///
@@ -42,6 +54,15 @@ pub enum EnvelopeOutcome {
     NoRoute,
     /// The proposal or context was invalid; never carries an intent.
     Invalid,
+    /// The decision was validated and permitted, and it reaches no execution
+    /// backend: `ESCALATE`, `ABORT` and `DECOMPOSE`.
+    ///
+    /// This is not a refusal. It says the decision stands and carries no
+    /// capability to execute, so the consumer acts on `proposal.decision` (hand
+    /// to a human, stop, decompose) rather than on an intent. It is only
+    /// emitted for a decision that carries no capability, and it never carries
+    /// an intent.
+    NoExecution,
 }
 
 impl EnvelopeOutcome {
@@ -113,6 +134,10 @@ impl PolicyBinding {
 }
 
 /// The capability validation result bound into the envelope.
+///
+/// Present exactly when the decision carries a capability. A decision that
+/// carries none has nothing to admit or permit, so its envelope must not claim
+/// a validation for it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapabilityValidation {
     pub capability: String,
@@ -208,16 +233,20 @@ impl ApprovalBinding {
 }
 
 /// A validated decision, bound to its subject, snapshot, proposal, policy
-/// verdict, capability validation, route, approvals, effect and expiry.
+/// verdict, capability validation (only when the decision carries a capability),
+/// route, approvals, effect and expiry.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DecisionEnvelope {
+    /// `1` for a capability-bearing decision, `2` for one that carries none.
     pub schema_version: u32,
     pub envelope_id: String,
     pub subject: Subject,
     pub snapshot: SnapshotRef,
     pub proposal: ProposalBinding,
     pub policy: PolicyBinding,
-    pub capability_validation: CapabilityValidation,
+    /// Present exactly when `proposal.decision` carries a capability.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_validation: Option<CapabilityValidation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route: Option<RouteConstraints>,
     #[serde(default)]
@@ -237,6 +266,20 @@ pub struct DecisionEnvelope {
 }
 
 impl DecisionEnvelope {
+    /// The `schema_version` a decision of `decision` is emitted under.
+    ///
+    /// A capability-bearing decision keeps the frozen v1 shape, so its output is
+    /// byte-identical to what consumers already read. A decision that carries no
+    /// capability needs the conditional v2 shape, which omits
+    /// `capability_validation`; v1 cannot express it.
+    pub fn schema_version_for(decision: DecisionKind) -> u32 {
+        if decision.requires_capability() {
+            LEGACY_ENVELOPE_SCHEMA_VERSION
+        } else {
+            ENVELOPE_SCHEMA_VERSION
+        }
+    }
+
     pub fn with_route(mut self, route: RouteConstraints) -> Self {
         self.route = Some(route);
         self
@@ -266,10 +309,13 @@ impl DecisionEnvelope {
     ///
     /// Fails closed when a non-executable outcome carries an intent, when an
     /// executable outcome is missing an intent, when the capability is not
-    /// admitted and permitted, or when the intent does not bind the same
-    /// subject and capability.
+    /// admitted and permitted, when the intent does not bind the same subject
+    /// and capability, and when a decision's capability claim and its envelope
+    /// disagree: `capability_validation` present for a decision that carries no
+    /// capability, absent for one that does, or a v1 envelope about a decision
+    /// that carries none.
     pub fn validate(&self) -> Result<(), ContractError> {
-        check_contract_version(self.schema_version, ENVELOPE_SCHEMA_VERSION)?;
+        check_envelope_version(self.schema_version)?;
         ContractError::require_non_empty("envelope_id", &self.envelope_id)?;
         ContractError::require_non_empty("subject.kind", &self.subject.kind)?;
         ContractError::require_non_empty("subject.id", &self.subject.id)?;
@@ -280,15 +326,82 @@ impl DecisionEnvelope {
             &self.policy.policy_decision_id,
         )?;
         ContractError::require_non_empty("policy.policy_version", &self.policy.policy_version)?;
-        ContractError::require_non_empty(
-            "capability_validation.capability",
-            &self.capability_validation.capability,
-        )?;
-        ContractError::require_non_empty(
-            "capability_validation.reason",
-            &self.capability_validation.reason,
-        )?;
         ContractError::require_non_empty("expiry", &self.expiry)?;
+
+        // The capability claim is decided by the decision kind alone. v1 is the
+        // frozen shape that always carries `capability_validation`, so it can
+        // only describe a capability-bearing decision.
+        let requires_capability = self.proposal.decision.requires_capability();
+        if self.schema_version == LEGACY_ENVELOPE_SCHEMA_VERSION && !requires_capability {
+            return Err(ContractError::InvalidValue {
+                field: "schema_version",
+                reason: format!(
+                    "a {:?} decision carries no capability and requires schema_version {}; \
+                     schema_version 1 always carries capability_validation",
+                    self.proposal.decision, ENVELOPE_SCHEMA_VERSION
+                ),
+            });
+        }
+        match &self.capability_validation {
+            Some(validation) if !requires_capability => {
+                return Err(ContractError::InvalidValue {
+                    field: "capability_validation",
+                    reason: format!(
+                        "a {:?} decision carries no capability, so its envelope must not \
+                         claim capability validation",
+                        self.proposal.decision
+                    ),
+                });
+            }
+            Some(validation) => {
+                ContractError::require_non_empty(
+                    "capability_validation.capability",
+                    &validation.capability,
+                )?;
+                ContractError::require_non_empty(
+                    "capability_validation.reason",
+                    &validation.reason,
+                )?;
+            }
+            None if requires_capability => {
+                return Err(ContractError::MissingField("capability_validation"));
+            }
+            None => {
+                // Nothing to gate, route or execute: an approval binding or a
+                // route here would describe a decision this envelope is not.
+                if !self.approvals.is_empty() || !self.grants.is_empty() {
+                    return Err(ContractError::InvalidValue {
+                        field: "approvals",
+                        reason: format!(
+                            "a {:?} decision has no capability, so no approval or grant binds \
+                             to it",
+                            self.proposal.decision
+                        ),
+                    });
+                }
+                if self.route.is_some() {
+                    return Err(ContractError::InvalidValue {
+                        field: "route",
+                        reason: format!(
+                            "a {:?} decision has no capability, so there is no route to \
+                             constrain",
+                            self.proposal.decision
+                        ),
+                    });
+                }
+            }
+        }
+        // NO_EXECUTION says "validated, and nothing executes", which only a
+        // decision without a capability can mean.
+        if self.outcome == EnvelopeOutcome::NoExecution && requires_capability {
+            return Err(ContractError::InvalidValue {
+                field: "outcome",
+                reason: "a capability-bearing decision either executes or is refused, so it \
+                         cannot resolve to NO_EXECUTION"
+                    .to_string(),
+            });
+        }
+
         if let Some(route) = &self.route {
             route.validate()?;
         }
@@ -302,7 +415,15 @@ impl DecisionEnvelope {
 
         match self.outcome {
             EnvelopeOutcome::Executable => {
-                if !self.capability_validation.admitted || !self.capability_validation.permitted {
+                let capability_validation =
+                    self.capability_validation.as_ref().ok_or_else(|| {
+                        ContractError::InvalidValue {
+                            field: "outcome",
+                            reason: "an EXECUTABLE envelope requires a capability-bearing decision"
+                                .to_string(),
+                        }
+                    })?;
+                if !capability_validation.admitted || !capability_validation.permitted {
                     return Err(ContractError::InvalidValue {
                         field: "capability_validation",
                         reason:
@@ -319,7 +440,7 @@ impl DecisionEnvelope {
                     })?;
                 // Revalidated before execution: a modified proposal is not trusted.
                 intent.validate()?;
-                if intent.capability != self.capability_validation.capability {
+                if intent.capability != capability_validation.capability {
                     return Err(ContractError::InvalidValue {
                         field: "intent.capability",
                         reason: "intent capability does not match capability_validation"
@@ -348,7 +469,7 @@ impl DecisionEnvelope {
                             && grant.approval == approval.name
                             && grant.subject == self.subject
                             && grant.revision == self.snapshot.revision
-                            && grant.capability == self.capability_validation.capability
+                            && grant.capability == capability_validation.capability
                             && grant.policy_version == self.policy.policy_version
                     });
                     if !has_bound_grant {
@@ -365,7 +486,8 @@ impl DecisionEnvelope {
             EnvelopeOutcome::Denied
             | EnvelopeOutcome::Pending
             | EnvelopeOutcome::NoRoute
-            | EnvelopeOutcome::Invalid => {
+            | EnvelopeOutcome::Invalid
+            | EnvelopeOutcome::NoExecution => {
                 if self.intent.is_some() {
                     return Err(ContractError::InvalidValue {
                         field: "intent",
