@@ -1,0 +1,33 @@
+{
+  "approvals": [],
+  "envelope_id": "envelope:proposal:recovery:obs-0001",
+  "expiry": "2026-10-01T00:20:00Z",
+  "grants": [],
+  "outcome": "NO_EXECUTION",
+  "policy": {
+    "policy_decision_id": "policy:proposal:recovery:obs-0001",
+    "policy_version": "ictus.default.v1",
+    "verdict": "ALLOW"
+  },
+  "proposal": {
+    "decision": "ESCALATE",
+    "proposal_id": "proposal:recovery:obs-0001",
+    "schema_version": 2
+  },
+  "schema_version": 2,
+  "snapshot": {
+    "digest": "d06ffcdbd7c52c421b94d93b9696b71a286d4f2859b4b50207d2c37589e15af1",
+    "revision": 2,
+    "snapshot_id": "snap-0002"
+  },
+  "subject": {
+    "id": "task-123",
+    "type": "task"
+  },
+  "validation": {
+    "capability_version": "not-applicable",
+    "context_id": "ctx-recovery-0002",
+    "proposal_digest": "c9d5099ba1534b1b3a847e2b269771236737f2010c451e7459e9e345c4b4063b",
+    "validated_at": "2026-10-01T00:05:00Z"
+  }
+}
