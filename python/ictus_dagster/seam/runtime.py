@@ -65,7 +65,12 @@ def resolve_backend(reference: str) -> RuntimeBackend:
         raise SeamConfigError(
             f"runtime seam backend '{module_name}' has no attribute '{attribute}'"
         ) from None
-    backend = factory()
+    try:
+        backend = factory()
+    except Exception as exc:
+        raise SeamConfigError(
+            f"runtime seam backend '{reference}' cannot be constructed: {exc}"
+        ) from None
     if not isinstance(backend, RuntimeBackend):
         raise SeamConfigError(
             f"runtime seam backend '{reference}' does not implement the seam port"
