@@ -393,8 +393,10 @@ fn digits_before_point(decimals: i32) -> usize {
 }
 
 /// CPython `float.__repr__`: the shortest string that round-trips, written
-/// positionally when the decimal point sits at `-4 ..= 16` and with a signed
-/// exponent of at least two digits otherwise.
+/// positionally when the scientific exponent `e` (value = `d.ddd * 10^e`)
+/// satisfies `-4 <= e < 16`, and with a signed exponent of at least two digits
+/// otherwise. `decimals` is `e + 1`, the number of digits before the decimal
+/// point.
 fn format_f64(value: f64) -> String {
     let (signed, decimals) = shortest_decimal(value);
     let (sign, digits) = match signed.strip_prefix('-') {
