@@ -171,6 +171,26 @@
       "sha256": "a2fbd2960615d801b33c4d75b7b42274a280e9413ac53a7733904eac8b48ed67"
     },
     {
+      "name": "snapshot-float-tie-breaking",
+      "digests": "snapshot",
+      "payload": {
+        "schema_version": 1,
+        "snapshot_id": "snap-float-ties",
+        "timestamp": "2026-10-01T00:00:00Z",
+        "domain": "software",
+        "subject": { "type": "task", "id": "t-float-ties" },
+        "facts": [
+          { "key": "tie.negative", "value": -847472097840887.2 },
+          { "key": "tie.positive", "value": 847472097840887.2 },
+          { "key": "third", "value": 0.3333333333333333 },
+          { "key": "subnormal", "value": 5e-324 }
+        ],
+        "capabilities": [],
+        "constraints": []
+      },
+      "sha256": "79d45afab37224ee8fadbaa0350b7ad042c02c3d8beb3749bfade98373056710"
+    },
+    {
       "name": "snapshot-literals",
       "digests": "snapshot",
       "payload": {

@@ -438,7 +438,11 @@ fn run_execute() -> Result<ExitCode, String> {
 }
 
 fn run_submit() -> Result<ExitCode, String> {
-    let raw = read_stdin()?;
+    // The backend digests this payload to bind the submission identity
+    // (`docs/IDENTITY_DIGEST.md`), so a number it cannot carry exactly has to be
+    // refused here: forwarding the rounded literal would bind a different
+    // digest to the same intent.
+    let raw = read_digestable_document()?;
     let intent: ExecutionIntent =
         serde_json::from_str(&raw).map_err(|e| format!("invalid ExecutionIntent JSON: {e}"))?;
     let receipt = JsonStdioBackend::from_env()

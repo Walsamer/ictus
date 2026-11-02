@@ -393,26 +393,14 @@ fn digits_before_point(decimals: i32) -> usize {
 }
 
 /// CPython `float.__repr__`: the shortest string that round-trips, written
-/// positionally when the decimal point sits at exponent `-4 ..= 16` and with a
-/// signed exponent of at least two digits otherwise.
+/// positionally when the decimal point sits at `-4 ..= 16` and with a signed
+/// exponent of at least two digits otherwise.
 fn format_f64(value: f64) -> String {
-    let exponential = format!("{value:e}");
-    let (mantissa, exponent) = exponential
-        .split_once('e')
-        .expect("Rust's LowerExp always writes an exponent");
-    let exponent: i32 = exponent
-        .parse()
-        .expect("Rust's LowerExp writes an integer exponent");
-    let (sign, mantissa) = match mantissa.strip_prefix('-') {
+    let (signed, decimals) = shortest_decimal(value);
+    let (sign, digits) = match signed.strip_prefix('-') {
         Some(rest) => ("-", rest),
-        None => ("", mantissa),
+        None => ("", signed.as_str()),
     };
-    let digits: String = mantissa
-        .chars()
-        .filter(|character| *character != '.')
-        .collect();
-    // value == 0.<digits> * 10^decimals
-    let decimals = exponent + 1;
     let mut text = String::from(sign);
     if decimals > -4 && decimals <= 16 {
         if decimals <= 0 {
@@ -420,9 +408,9 @@ fn format_f64(value: f64) -> String {
             for _ in 0..-decimals {
                 text.push('0');
             }
-            text.push_str(&digits);
+            text.push_str(digits);
         } else if digits_before_point(decimals) >= digits.len() {
-            text.push_str(&digits);
+            text.push_str(digits);
             for _ in digits.len()..digits_before_point(decimals) {
                 text.push('0');
             }
@@ -445,6 +433,54 @@ fn format_f64(value: f64) -> String {
         text.push_str(&format!("{written:+03}"));
     }
     text
+}
+
+/// The shortest round-trip decimal of `value` and its decimal-point position:
+/// `value == 0.<digits> * 10^decimals`, with a signed digit string that carries
+/// no leading or trailing zeros.
+///
+/// The digits come from `ryu`, which resolves the choice between two equally
+/// short spellings of the same double the way CPython's `repr` does. Rust's own
+/// `{:e}` (Grisu) resolves that tie differently: `-847472097840887.2` formats as
+/// `-847472097840887.3`, which is just as short and round-trips to the same
+/// double, so a digest computed from it would disagree with every consumer.
+fn shortest_decimal(value: f64) -> (String, i32) {
+    let mut buffer = ryu::Buffer::new();
+    let text = buffer.format_finite(value);
+    let (negative, rest) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    let (mantissa, exponent) = match rest.split_once('e') {
+        Some((mantissa, exponent)) => (
+            mantissa,
+            exponent
+                .parse::<i32>()
+                .expect("ryu writes an integer exponent"),
+        ),
+        None => (rest, 0),
+    };
+    let (integer, fraction) = match mantissa.split_once('.') {
+        Some((integer, fraction)) => (integer, fraction),
+        None => (mantissa, ""),
+    };
+    let mut digits = format!("{integer}{fraction}");
+    let mut decimals =
+        i32::try_from(integer.len()).expect("a double's integer part fits") + exponent;
+    while digits.len() > 1 && digits.starts_with('0') {
+        digits.remove(0);
+        decimals -= 1;
+    }
+    while digits.len() > 1 && digits.ends_with('0') {
+        digits.pop();
+    }
+    if digits == "0" {
+        decimals = 1;
+    }
+    if negative {
+        digits.insert(0, '-');
+    }
+    (digits, decimals)
 }
 
 /// Write a JSON string in the canonical form: only `"` and `\` are written as
@@ -592,6 +628,268 @@ mod tests {
         assert_eq!(format_f64(1e-5), "1e-05");
         assert_eq!(format_f64(1e16), "1e+16");
         assert_eq!(format_f64(1e15), "1000000000000000.0");
+    }
+
+    #[test]
+    fn the_shortest_spelling_is_the_one_cpython_picks() {
+        // Two spellings of the same double can both round-trip and be equally
+        // short; Rust's `{:e}` picks ...873 here and CPython picks ...872. The
+        // digits come from ryu for exactly this reason.
+        assert_eq!(format_f64(-847472097840887.2), "-847472097840887.2");
+        assert_eq!(format_f64(847472097840887.2), "847472097840887.2");
+        assert_eq!(format_f64(1.0 / 3.0), "0.3333333333333333");
+    }
+
+    #[test]
+    fn numbers_match_cpython_repr_on_a_generated_corpus() {
+        // Every expected string is CPython's `repr` of that double, generated
+        // once from the bit pattern: the corpus includes subnormals, the
+        // extremes, tie cases and 220 pseudo-random finite doubles. A formatter
+        // that only round-trips would pass the vectors and fail here.
+        for (bits, expected) in [
+            (0x0000000000000000, "0.0"),
+            (0x8000000000000000, "-0.0"),
+            (0x3ff0000000000000, "1.0"),
+            (0xbff0000000000000, "-1.0"),
+            (0x3ee4f8b588e368f1, "1e-05"),
+            (0x3fb999999999999a, "0.1"),
+            (0x4059000000000000, "100.0"),
+            (0x4341c37937e08000, "1e+16"),
+            (0x430c6bf526340000, "1000000000000000.0"),
+            (0x0000000000000001, "5e-324"),
+            (0x7fefffffffffffff, "1.7976931348623157e+308"),
+            (0xc308162bcaca77ba, "-847472097840887.2"),
+            (0x4308162bcaca77ba, "847472097840887.2"),
+            (0x4340000000000000, "9007199254740992.0"),
+            (0x3fd5555555555555, "0.3333333333333333"),
+            (0x3fd3333333333334, "0.30000000000000004"),
+            (0x7e37e43c8800759c, "1e+300"),
+            (0xdc1b77ae0bf34dad, "-4.9911105725155504e+135"),
+            (0x64f0eeb9026e6076, "1.715373926431966e+178"),
+            (0x7b07ce91e5906136, "4.4251604027143375e+284"),
+            (0x305f050c368dcc74, "1.0715660391465826e-75"),
+            (0x2ceb16e0a1c54aec, "2.5973481493288907e-92"),
+            (0x97101dce4e7bfb79, "-1.3475090132806154e-197"),
+            (0x9ad2e144d6e8f2cf, "-1.81996730402717e-179"),
+            (0xd9aa792e1af470ea, "-8.750186241947517e+123"),
+            (0xddaa4e85b0d6e28b, "-1.603964615428183e+143"),
+            (0x8f8ea9d349428d8e, "-9.643915712060552e-234"),
+            (0x08f474ffb8e8ab15, "1.5860846119992697e-265"),
+            (0x2ead854756d71f03, "7.597954524892738e-84"),
+            (0x55bc79f8ada711fd, "1.0204796945730538e+105"),
+            (0x0e1fc49bd63b809e, "1.1910593176322935e-240"),
+            (0xb92199e83f5a101f, "-1.694933913128696e-33"),
+            (0xc5765079fc5d43ff, "-4.3162252145519944e+26"),
+            (0x353cfc387dfae6b8, "3.0261999441573203e-52"),
+            (0xa32edabf5585bd75, "-3.238696681491661e-139"),
+            (0xfc5639b16b714b4f, "-8.663725837306241e+290"),
+            (0x92fb2dcfc8ae9a19, "-3.0797526843217145e-217"),
+            (0x544b0ec76d00616d, "1.15589923121874e+98"),
+            (0xbcbb9b7e9a319aef, "-3.831296467316889e-16"),
+            (0x0f1a50d59c0aa21a, "6.466053826432699e-236"),
+            (0x80ae2120826571de, "-2.1452846540129615e-305"),
+            (0x0e1ecd02ed7c0cbd, "1.1547975125429853e-240"),
+            (0x0d0981e8c1fa7be4, "7.296267179458751e-246"),
+            (0xdc86b3d3cdbdf613, "-5.2803264785067434e+137"),
+            (0x6d0844c269e7693f, "1.6732138965686944e+217"),
+            (0x3681da7f6993082d, "3.909076791246025e-46"),
+            (0x5b928e2c987d857d, "1.3170664051174186e+133"),
+            (0x6c716e1e6ced8137, "2.347135155778617e+214"),
+            (0xccb870213498f7f5, "-3.92703626520675e+61"),
+            (0x9f07b27a78869b5a, "-3.3710794864173703e-159"),
+            (0xb0ba91e47f6200ec, "-5.874229071700385e-74"),
+            (0xc72b4c36d0db7fed, "-7.086891063466728e+34"),
+            (0x35f305b0c0fc9252, "8.134710481112139e-49"),
+            (0x7ac78fb373ffbff6, "2.7371952383912e+283"),
+            (0x8e39b81de71b7d09, "-3.857101171397437e-240"),
+            (0x59a69ba126cd29b3, "7.472552783215012e+123"),
+            (0xbfcbffff0cbcbf20, "-0.21874988672197393"),
+            (0x2d1ce28856d20e5e, "2.215603731797175e-91"),
+            (0x572a15ed48b3fdc2, "7.841697833625344e+111"),
+            (0x32b911499417aab9, "2.3803041954013153e-64"),
+            (0x17a8ec88e0da0bac, "1.0669643833474769e-194"),
+            (0x0cc88eab2f9ad4bb, "4.3902997915267284e-247"),
+            (0xbc3a5b419a43afd2, "-1.4287870889761718e-18"),
+            (0x6f0f3414c47c9c0d, "9.239942182940311e+226"),
+            (0xe71a7567edb8c675, "-4.6049449625872434e+188"),
+            (0x63674cf841ee8ab9, "7.034866163903114e+170"),
+            (0xe375837da840d9ec, "-1.2990664698521692e+171"),
+            (0x578eb22e1ea5a35f, "5.905686629582816e+113"),
+            (0x4efa582ee029dfd9, "2.9091650704676072e+72"),
+            (0xf3b363e938295a26, "-2.1692042628035588e+249"),
+            (0x2e3a4ef3496f4112, "5.2900001119406624e-86"),
+            (0xb809d78e2a2f9b10, "-9.49285634690637e-39"),
+            (0x46217f104eb30026, "6.93101536724741e+29"),
+            (0x8947b5fefda6afa6, "-5.882775229507853e-264"),
+            (0x4a3ae29b2af0cb79, "3.9292734840969675e+49"),
+            (0xbfd0273b10a6d4af, "-0.2523944532980051"),
+            (0xed0a00eb302b52c6, "-1.7928344098460697e+217"),
+            (0x3c0a45ad6d0175e3, "1.7802719962921167e-19"),
+            (0x5bec25a986aa6fc8, "6.393254796400403e+134"),
+            (0x904bc2dda0ebc917, "-3.576279648101772e-230"),
+            (0x459ae6d82ef0bb45, "2.0814210227308495e+27"),
+            (0xd8f30b16630d2b73, "-3.0734116139155754e+120"),
+            (0x7110b72632258de5, "4.251812196359382e+236"),
+            (0x543b14bc79e21fbe, "5.7844666878803994e+97"),
+            (0xb3afb674d263f401, "-9.867437071726851e-60"),
+            (0x992a5514fae813a9, "-1.891221305366931e-187"),
+            (0x65950d0578f009ce, "2.18377227571136e+181"),
+            (0x5703572bfb805a5d, "1.4535047277321816e+111"),
+            (0xf58b6a5f9c786da9, "-1.6465799069278203e+258"),
+            (0xa837793e9e8ad732, "-5.957466131998648e-115"),
+            (0x50eabc7287dc4e1c, "6.340262899598194e+81"),
+            (0x4dca1d57ff03f180, "5.500381791581099e+66"),
+            (0x4899ff11c2f79663, "5.661506902655086e+41"),
+            (0x16166c76ad45818f, "2.860815981281152e-202"),
+            (0xcb74ca30b3d6894c, "-3.186028444038842e+55"),
+            (0x217355871886f75e, "1.5120492207884386e-147"),
+            (0x28a1e2393381ed30, "5.809632407259761e-113"),
+            (0x074c31b6d9efa2ea, "1.6286721492574822e-273"),
+            (0xbec4688d35b7872f, "-2.4328714240831068e-06"),
+            (0xf8fd0016351ac3e1, "-6.275367084072634e+274"),
+            (0x2a3e36405bf02e26, "3.29321318659287e-105"),
+            (0x4fa794552d7c87fa, "5.332638378877033e+75"),
+            (0x6b65fa68c812c075, "2.2579710060776677e+209"),
+            (0xb0d838d4f45658b5, "-2.1420571626728534e-73"),
+            (0xf088256e71b67944, "-1.1995980149915995e+234"),
+            (0xb4d1bf49868fc4b6, "-2.89514964136048e-54"),
+            (0x7f30634d239b36bf, "4.495301479005006e+304"),
+            (0x9adf073ca7e24f12, "-2.9910257010919965e-179"),
+            (0xbf023d5f71c40f0c, "-3.478953860461099e-05"),
+            (0xf8daff4ab7e1c412, "-1.4604790788453035e+274"),
+            (0x3bb60a1f6449431a, "4.667054448216033e-21"),
+            (0xe1b6cc3fce8a571c, "-5.128277780879042e+162"),
+            (0x974be547500504b2, "-1.865902080785903e-196"),
+            (0x788637bdbb04623b, "3.756003170106989e+272"),
+            (0x78b479878553843f, "2.769071305261943e+273"),
+            (0xf614dc4037d1ccf7, "-6.414723702314457e+260"),
+            (0xab5917a81f0fb2ae, "-7.17007679825171e-100"),
+            (0x107db970f61ec64b, "3.063346448760151e-229"),
+            (0xa7e591e85a840907, "-1.7107275877582857e-116"),
+            (0x42e87faaebb9a0d5, "215492859907334.66"),
+            (0x7cb7d0a0e9b446d4, "5.941355978696207e+292"),
+            (0x93b411557b1e1b59, "-9.314100426966256e-214"),
+            (0x17282941775bd12f, "4.040271440024106e-197"),
+            (0x1d6eb56cc3fecd4d, "6.5095912305809035e-167"),
+            (0x9cc6d38ebb4dc397, "-4.725304702312625e-170"),
+            (0x93e7f09c76995dd0, "-8.889046505961924e-213"),
+            (0x40481181f54f1b6b, "48.13677851069118"),
+            (0xfc10536a39343f9d, "-3.977510832916913e+289"),
+            (0x2b59a11006fe10a2, "7.323449055534529e-100"),
+            (0xb25de04b53658403, "-4.43267188156626e-66"),
+            (0x482f7b77f3b42fcb, "5.3564356221290984e+39"),
+            (0xaa19ef48de09d554, "-7.067451838786451e-106"),
+            (0xbc1efbb4d09613fe, "-4.199010356643058e-19"),
+            (0x01640cfd5e7e0059, "5.847695999398785e-302"),
+            (0x2103a6ef6f7bca19, "1.2007177480205567e-149"),
+            (0xba59dbbf218e9bcd, "-1.3055148249443392e-27"),
+            (0x47cfbdd44466d5ba, "8.43834345315447e+37"),
+            (0x0f7180ea42ce3691, "2.752517763735277e-234"),
+            (0x1d57d70abe6c2ebc, "2.526788028536205e-167"),
+            (0x3df4865f060ed9e1, "2.9867642218664106e-10"),
+            (0x9cc2d942d8ac9c12, "-3.9018746502228826e-170"),
+            (0x68c29c22e6ec81aa, "4.347217825559248e+196"),
+            (0xa1cd5d166c667229, "-7.348551753937433e-146"),
+            (0x950c6175be7d148d, "-2.762460922630013e-207"),
+            (0x3f3e42bdb31d6de4, "0.0004617417463259317"),
+            (0xb8e8620efee2ae3f, "-1.4675009188927917e-34"),
+            (0x6892f24f073504a3, "5.532311359466528e+195"),
+            (0x7faf4d50b83a266a, "1.0990510499741633e+307"),
+            (0x36eff6fe424288a6, "4.479224922930724e-44"),
+            (0x7436a02ab71ee437, "6.479738675343636e+251"),
+            (0x833a63ba9131343f, "-4.131963459956029e-293"),
+            (0x992cb64cfdf7b997, "-2.0621386115069104e-187"),
+            (0xc8b93e004898d324, "-2.1989050319881327e+42"),
+            (0x645d2dce235dab82, "2.8867342589916004e+175"),
+            (0x808a9a75bdabb055, "-4.735555107626997e-306"),
+            (0x995531f7eedc5275, "-1.217811298351344e-186"),
+            (0x087d63039379d791, "8.900118122652927e-268"),
+            (0xf3c9caffb024e07e, "-5.770954824128418e+249"),
+            (0xea06a464360f763e, "-5.546063542174503e+202"),
+            (0x53361012dddd2752, "7.190830824723893e+92"),
+            (0xd66a74b438fd099c, "-1.941648404758352e+108"),
+            (0x8d5497b6e7e3148f, "-1.88493094519322e-244"),
+            (0x00252f2c32b41166, "5.892070161490275e-308"),
+            (0xf4dba3db8471e0c4, "-8.105792111531084e+254"),
+            (0xa447b4c07713b205, "-6.523059653436162e-134"),
+            (0x58d68ff52d13b421, "9.103372873476245e+119"),
+            (0x7c3d90428332bb09, "2.8810573598215993e+290"),
+            (0x98e09052e5853c3f, "-7.435185103913208e-189"),
+            (0xb90814763588d987, "-5.797031974500124e-34"),
+            (0x04349ea8330d49f4, "2.1158634801682737e-288"),
+            (0x213e49f755c9ae67, "1.480492072589796e-148"),
+            (0xadc15b82753344fb, "-2.726700493055371e-88"),
+            (0x69a0dc20acf37cb2, "6.45269948043362e+200"),
+            (0x729bfdea5375f6cb, "1.1945606721328604e+244"),
+            (0xf8eb32047bbbcfe6, "-2.9423966222416894e+274"),
+            (0x4b85228ee7b181f9, "6.477856523538338e+55"),
+            (0x41031bc75f55bcba, "156536.9215502495"),
+            (0x2da461eb41957943, "8.004766223603229e-89"),
+            (0xd74e810a9b826371, "-3.667973268328953e+112"),
+            (0x1cdd495915ad9bf7, "1.2125234815256259e-169"),
+            (0xbaeb7806c59edd00, "-7.100532164112103e-25"),
+            (0x3ba89ff13576a0ba, "2.6072493943615606e-21"),
+            (0x005ca96b1855237b, "6.377460053650196e-307"),
+            (0xc7b1d77110b837fd, "-2.37155129898773e+37"),
+            (0x69bcfe5aebcf18d2, "2.2193146864212394e+201"),
+            (0x6f51d1ecaa02f263, "1.688592499278879e+228"),
+            (0x6d8dc769b3280f47, "5.256011819884271e+219"),
+            (0xb51767a476976e99, "-6.108951742016336e-53"),
+            (0x0418c241fa7ac604, "6.351467798285668e-289"),
+            (0xa581230adaef3288, "-4.944515222634075e-128"),
+            (0xf1ac9d290f1d4eed, "-3.726522459630376e+239"),
+            (0x3dabc8a9eded6f30, "1.263462896392155e-11"),
+            (0x55cb59e89b5779ee, "1.9603110021981586e+105"),
+            (0x72a54713a9b86c9d, "1.8160593387967868e+244"),
+            (0xa3726687db6b9b04, "-6.18061749778593e-138"),
+            (0x5fdf2267673f0d32, "6.52256133253205e+153"),
+            (0x68dfe63578c47fa8, "1.4903137223520643e+197"),
+            (0x624e220196711d57, "3.4704648912517096e+165"),
+            (0xbe9e598ebfea4aad, "-4.52247775153582e-07"),
+            (0xd79af3ca3ba29578, "-1.037084836001061e+114"),
+            (0x6f5e5868097b8e52, "2.8754690828576924e+228"),
+            (0x5af01374addcadce, "1.1143358899359637e+130"),
+            (0x2faaf7e9e83fa715, "4.5489015505785396e-79"),
+            (0xbb42e4b2bad2bd1b, "-3.1256429291924854e-23"),
+            (0xd30563d941e93ea1, "-8.714453691721558e+91"),
+            (0x1167ea9167c9649c, "8.076568837115626e-225"),
+            (0xb6249a7c39665155, "-7.048729021186279e-48"),
+            (0xb3f56e3e83c468b7, "-2.1338113414315463e-58"),
+            (0xa87bdea4d9832da6, "-1.1317069599854738e-113"),
+            (0xe437318091b5827d, "-5.736425033777084e+174"),
+            (0x59e1b682e1cbd639, "9.367392914269608e+124"),
+            (0x7d32511b3390efd5, "1.1698384100740314e+295"),
+            (0x1d70ed6acaa29b4a, "7.176504206107081e-167"),
+            (0x1e71c6a67d004cfc, "4.938963803661829e-162"),
+            (0xa0c0b3f99ebcf365, "-6.378335818567057e-151"),
+            (0x498e468dbb57f3c3, "2.160539023382998e+46"),
+            (0x1c54594f126dcce4, "3.290960217035386e-172"),
+            (0x16ba1d39f25cae7d, "3.4116072635664438e-199"),
+            (0x67de1f8cd39e2861, "2.1474297741370636e+192"),
+            (0x108e0b8ab05d2c71, "6.192795587813568e-229"),
+            (0x96288ccb432aaa69, "-6.264176696201658e-202"),
+            (0x887013f1c0b1457d, "-4.86937695727198e-268"),
+            (0xe47a782d96a0d8b7, "-1.0474717780590377e+176"),
+            (0xc0f1c836d72154c6, "-72835.42752202143"),
+            (0x01ea4c72979ce7ef, "1.9634838852369833e-299"),
+            (0xe58cc45382b7c5e0, "-1.4921087049120546e+181"),
+            (0x0f265892d429d26b, "1.098128118575969e-235"),
+            (0x119be96337a67b0f, "7.540654791281066e-224"),
+            (0xad7f4ee4ff441439, "-1.5369479028680968e-89"),
+            (0x69765cdf019ab251, "1.069849989958128e+200"),
+            (0x6c83796be9953375, "5.244798957954977e+214"),
+            (0xb30aa29935c26453, "-8.093307970654829e-63"),
+            (0x88c5405c130c945b, "-2.0595934067202045e-266"),
+            (0x9ffcaab00de2fbb3, "-1.3362898797649858e-154"),
+            (0xf60b6a392f39b284, "-4.215154408802224e+260"),
+            (0x34f99df66499e0e1, "1.6715899149649308e-53"),
+            (0xb8c6fbae04f4cb60, "-3.458116161801038e-35"),
+            (0xddf1a401094ffaf6, "-3.4418528054556186e+144"),
+            (0x24e629d896fb1883, "6.244957363033692e-131"),
+            (0xe2fd7570a6e4ae72, "-6.948513516814706e+168"),
+        ] {
+            assert_eq!(format_f64(f64::from_bits(bits)), expected, "{bits:#018x}");
+        }
     }
 
     #[test]

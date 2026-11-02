@@ -30,6 +30,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "1"
 sha2 = "0.10"
+# Shortest round-trip float formatting; serde_json already depends on it, and its
+# tie-breaking between equally short spellings matches CPython (docs/IDENTITY_DIGEST.md).
+ryu = "1"
 
 [profile.release]
 lto = "thin"

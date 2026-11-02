@@ -49,11 +49,18 @@ encoded as UTF-8. Concretely:
   `\" \\ \b \f \n \r \t` are used where JSON defines them, and `/` is never
   escaped.
 - **Numbers** are written in CPython's `repr` form: an integer as its decimal
-  digits; a double as the shortest decimal string that round-trips, positional
-  when its decimal point falls at exponent `-4 ..= 16` and in exponent form with
-  a sign and at least two digits otherwise (`1.0`, `0.1`, `0.0001`, `1e-05`,
-  `1e+16`, `1.7976931348623157e+308`, `-0.0`). `1` and `1.0` are **different
-  payloads** and digest differently.
+  digits; a double as the shortest decimal string that round-trips, choosing
+  among equally short spellings the one closest to the exact value (ties to the
+  even last digit) — that is what CPython's `dtoa` and `ryu` both produce, and
+  it is *not* interchangeable with any other shortest-round-trip formatter:
+  `-847472097840887.2` also has the equally short spelling
+  `-847472097840887.3`, and two implementations picking differently would digest
+  different bytes for one value. The string is written positionally when the
+  scientific exponent `e` (value = `d.ddd × 10^e`) satisfies `-4 <= e < 16`, and
+  in exponent form with a sign and at least two digits otherwise: `1.0`, `0.1`,
+  `0.0001` (e = -4), `1e-05` (e = -5), `1e+16` (e = 16), `1e+300`,
+  `1.7976931348623157e+308`, `-0.0`. `1` and `1.0` are **different payloads**
+  and digest differently.
 - **Literals**: `null`, `true`, `false`; the empty object `{}` and the empty
   array `[]` are written as such.
 
@@ -247,8 +254,15 @@ for all three subjects, and code-point ordering against UTF-16 ordering),
 nesting, non-ASCII and astral strings, escapes and control characters
 (including `\u007f`), integers versus doubles and the whole float battery
 (including `9007199254740993.0`, `0.00001`, `5e-324`, `1.7976931348623157e308`),
-`null`/`true`/`false`, empty object and empty array, and duplicate-looking keys
-(case-differing, case-fold-equal, NFC versus NFD).
+the shortest-spelling tie (`-847472097840887.2`), `null`/`true`/`false`, empty
+object and empty array, and duplicate-looking keys (case-differing,
+case-fold-equal, NFC versus NFD).
+
+Beyond the published cases, `crates/core/src/digest.rs` also compares its
+formatter against CPython's `repr` for a generated corpus of 240 doubles
+(subnormals, the extremes, tie cases and pseudo-random bit patterns), so a
+formatter that merely round-trips but spells a value differently fails there
+rather than in a consumer.
 
 A consumer adding its own conformance test only needs the vector file and this
 document — no Ictus code, and no agreement from us about a library.

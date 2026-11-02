@@ -219,6 +219,23 @@ fn decide_context_refuses_an_integer_the_digest_protocol_cannot_represent() {
 }
 
 #[test]
+fn submit_refuses_an_integer_the_digest_protocol_cannot_represent() {
+    // The submission boundary digests this payload to bind the identity, so a
+    // rounded literal would bind a different digest to the same intent
+    // (docs/IDENTITY_DIGEST.md). The guard runs before the payload is parsed or
+    // forwarded, so no backend is configured for this run.
+    let intent = r#"{"schema_version":1,"intent_id":"intent:big","capability":"demo.verify","target":{"type":"task","id":"t1"},"arguments":{"limit":18446744073709551616},"requested_by":{"provider":"rules.v1","decision_id":"p1"}}"#;
+    let out = run(&["submit"], intent, &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("$.arguments.limit"),
+        "stderr must name the field: {stderr}"
+    );
+}
+
+#[test]
 fn decide_data_quality_capability_is_allowed() {
     // The second (non-software) domain goes through the same core.
     let out = run(
