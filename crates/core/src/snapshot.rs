@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::digest::{digest_value, DigestError};
 use crate::version::{ContractError, SCHEMA_VERSION};
 
 /// The thing a decision is about. Deliberately generic.
@@ -131,23 +132,20 @@ impl StateSnapshot {
     }
 
     /// Deterministic content digest of this snapshot: the lowercase hex
-    /// SHA-256 of its canonical JSON form.
+    /// SHA-256 of its canonical form, exactly as a consumer recomputes it.
     ///
-    /// The canonical form is the compact serialization of the *value* form, so
-    /// every object is written with its keys sorted (`serde_json` maps are
-    /// ordered) and no whitespace, encoded as UTF-8. The same snapshot always
-    /// digests to the same string, and changing any fact, id, timestamp or
-    /// capability changes it. A consumer compares this against the digest it
-    /// recorded for the snapshot it decided from; Ictus never accepts a
-    /// digest as input.
-    pub fn content_digest(&self) -> String {
-        use sha2::{Digest, Sha256};
-
+    /// The canonical form is defined once in [`crate::digest`] and published in
+    /// `docs/IDENTITY_DIGEST.md`: object keys sorted by code point, no
+    /// whitespace, every character outside `0x20..=0x7e` escaped, numbers in
+    /// CPython's form, UTF-8 bytes. The object digested is the snapshot's
+    /// complete serialized form, so a consumer digests the payload it received
+    /// without adding, removing or normalizing a field. Changing any fact, id,
+    /// timestamp or capability changes the digest. A consumer compares this
+    /// against the digest it recorded for the snapshot it decided from; Ictus
+    /// never accepts a digest as input.
+    pub fn content_digest(&self) -> Result<String, DigestError> {
         let value = serde_json::to_value(self).expect("a StateSnapshot is always serializable");
-        let canonical = serde_json::to_vec(&value).expect("a JSON value is always serializable");
-        let mut hasher = Sha256::new();
-        hasher.update(&canonical);
-        format!("{:x}", hasher.finalize())
+        digest_value(&value)
     }
 
     /// Structural validation independent of any policy.
@@ -176,27 +174,32 @@ mod tests {
         .with_capability("demo.verify")
     }
 
+    fn digest(snapshot: &StateSnapshot) -> String {
+        snapshot.content_digest().expect("in-domain snapshot")
+    }
+
     #[test]
     fn content_digest_is_sha256_of_the_canonical_form() {
         // Pinned vector. The canonical form is this exact text: object keys
-        // sorted alphabetically, compact separators, UTF-8. Any change to key
+        // sorted by code point, compact separators, UTF-8. Any change to key
         // ordering, separators or hashing fails here, which is what keeps two
-        // Ictus boundaries from silently disagreeing about a snapshot.
+        // Ictus boundaries from silently disagreeing about a snapshot. The
+        // published vectors in `contracts/digest-vectors.json` cover the rest.
         //
         // {"capabilities":["demo.verify"],"constraints":[],"domain":"software",
         //  "facts":[{"key":"attempts.semantic","value":0}],"schema_version":1,
         //  "snapshot_id":"snap-1","subject":{"id":"t1","type":"task"},
         //  "timestamp":"2026-10-01T00:00:00Z"}
         assert_eq!(
-            snapshot().content_digest(),
+            digest(&snapshot()),
             "38a4835e821a6e9c7ff1f257b0a7ca4459c0f9d6f7bbcc06d543a31f35eac86e"
         );
     }
 
     #[test]
     fn content_digest_is_stable_and_lowercase_hex() {
-        let first = snapshot().content_digest();
-        let second = snapshot().content_digest();
+        let first = digest(&snapshot());
+        let second = digest(&snapshot());
         assert_eq!(first, second);
         assert_eq!(first.len(), 64);
         assert!(first
@@ -206,7 +209,7 @@ mod tests {
 
     #[test]
     fn changing_one_fact_changes_the_digest() {
-        let base = snapshot().content_digest();
+        let base = digest(&snapshot());
         for mutated in [
             snapshot().with_fact(Fact::integer("attempts.step_retries", 1)),
             snapshot().with_constraint("approval_required"),
@@ -219,7 +222,7 @@ mod tests {
                 ..snapshot()
             },
         ] {
-            assert_ne!(mutated.content_digest(), base);
+            assert_ne!(digest(&mutated), base);
         }
         // Changing a fact's value (not just adding one) also changes it.
         let revalued = StateSnapshot::new(
@@ -230,6 +233,6 @@ mod tests {
         )
         .with_fact(Fact::integer("attempts.semantic", 1))
         .with_capability("demo.verify");
-        assert_ne!(revalued.content_digest(), base);
+        assert_ne!(digest(&revalued), base);
     }
 }

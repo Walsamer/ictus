@@ -336,7 +336,7 @@ fn compose_no_capability(proposal: &DecisionProposal) -> ictus_policy::TrustedDe
     let snapshot = SnapshotRef::new(
         &context.snapshot.snapshot_id,
         context.revision,
-        context.snapshot.content_digest(),
+        context.snapshot.content_digest().unwrap(),
     );
     compose_with(
         &context,
@@ -349,10 +349,7 @@ fn compose_no_capability(proposal: &DecisionProposal) -> ictus_policy::TrustedDe
 }
 
 fn proposal_digest(proposal: &DecisionProposal) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(serde_json::to_vec(proposal).unwrap());
-    format!("{:x}", hasher.finalize())
+    ictus_core::digest::proposal_digest(proposal).unwrap()
 }
 
 #[test]
@@ -422,7 +419,7 @@ fn an_escalation_envelope_binds_the_same_digests_as_an_execution_envelope() {
     // its revision.
     assert_eq!(
         envelope.snapshot.digest,
-        context.snapshot.content_digest(),
+        context.snapshot.content_digest().unwrap(),
         "the escalation envelope must bind the snapshot exactly as received"
     );
     assert_eq!(envelope.snapshot.snapshot_id, "snap-1");

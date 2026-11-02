@@ -256,9 +256,9 @@ to `DENIED` or `INVALID`. `PENDING` and `NO_ROUTE` describe an approval gate and
 a route for a capability, so neither can describe such a decision. Everything
 else binds identically — subject, snapshot id/revision and Ictus-computed
 digest, proposal identity/version/decision, policy identity/version/verdict, the
-SHA-256 digest of the canonical proposal bytes, the validation timestamp and the
-expiry — so an escalation is as verifiable as an execution. Both versions are
-accepted on input; unknown versions fail closed.
+SHA-256 digest of the canonical proposal bytes (`docs/IDENTITY_DIGEST.md`), the
+validation timestamp and the expiry — so an escalation is as verifiable as an
+execution. Both versions are accepted on input; unknown versions fail closed.
 
 Exactly one thing narrowed in v1: a v1 envelope that claims a capability for
 `ESCALATE`, `ABORT` or `DECOMPOSE` used to validate and is now a contract error.
@@ -301,7 +301,9 @@ Binding rules:
   executable envelope must have a matching non-revoked bound grant.
 - `validation.proposal_digest` binds the exact serialized candidate payload and
   must also be present in the executable intent's policy context. A changed
-  payload therefore requires a fresh validation result.
+  payload therefore requires a fresh validation result. The digest is the
+  published canonical form in `docs/IDENTITY_DIGEST.md`, so a consumer
+  recomputes it over the payload it received and compares.
 - The `TrustedDecision` wrapper is the in-process authority boundary. Its JSON
   envelope is portable audit data; parsing or manually constructing an `ALLOW`
   envelope does not recreate the wrapper accepted by local execution code.

@@ -26,6 +26,7 @@ during a migration, and new wire versions change only when required.
 | ExecutionResult | `execution-result.schema.json` | `ictus_core::ExecutionResult` | bridge output |
 | RuntimeSeamConfig | `runtime-seam.schema.json` | — (execution backend only) | `ictus_dagster.seam.config.load_seam_config` |
 | RuntimeEvidence | `runtime-evidence.schema.json` | — (execution backend only) | `ictus_dagster.seam.evidence.validate_evidence` |
+| IdentityDigestVectors | `digest-vectors.schema.json` + `digest-vectors.json` | `ictus_core::digest` | `ictus_dagster.submission.intent_digest` |
 
 ## Conventions
 
@@ -74,6 +75,24 @@ recovery; a `RECOVERY` context must bind the failed attempt and its snapshot.
 The Rust and Python halves agree: `crates/core/tests/contracts_json.rs` parses
 the exact example files that `tests/python/test_contracts_schemas.py` validates
 the new schemas against.
+
+### IdentityDigestVectors (v1)
+
+`digest-vectors.json` is not a payload exchanged at runtime: it is the **pinned
+identity-digest protocol** that Ictus produces and a consumer such as Tactus
+implements independently. `docs/IDENTITY_DIGEST.md` defines the canonical form,
+the digested field set of each subject (snapshot content, proposal, intent
+payload), the number domain and the versioning policy; this file is the
+artefact a consumer pins, so a change to the algorithm, the field set or the
+vectors needs a new `schema_version`.
+
+Three digests cross the boundary and all three use that one algorithm:
+`snapshot.digest` (StateSnapshot content), `validation.proposal_digest`
+(repeated in `intent.policy_context.proposal_digest`) and the submission
+identity digest `ictus.intent_digest`. Ictus asserts the vectors from Rust
+(`crates/core/tests/digest_vectors.rs`) and Python
+(`tests/python/test_digest_vectors.py`) so the file and the implementations
+cannot drift apart.
 
 ### ExecutionReceipt vs ExecutionStatus
 

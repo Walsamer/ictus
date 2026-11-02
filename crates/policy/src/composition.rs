@@ -6,6 +6,7 @@
 //! deserialized `DecisionEnvelope`, or a caller-created `ALLOW`, is audit data
 //! and cannot become a `TrustedDecision`.
 
+use ictus_core::digest::proposal_digest;
 use ictus_core::{
     ApprovalBinding, ApprovalGrant, CapabilityValidation, DecisionContext, DecisionEnvelope,
     DecisionProposal, EnvelopeOutcome, PolicyBinding, PolicyDecisionKind, ProposalBinding,
@@ -534,26 +535,6 @@ fn required_approvals(capability: &ictus_core::Capability) -> Vec<String> {
     }
 }
 
-fn proposal_digest(proposal: &DecisionProposal) -> Result<String, PortError> {
-    let bytes = serde_json::to_vec(proposal)
-        .map_err(|error| PortError::Serialization(error.to_string()))?;
-    Ok(sha256_hex(&bytes))
-}
-
-/// Lowercase hex SHA-256 of `input`.
-///
-/// The digest is part of the serialized binding contract and must match every
-/// other runtime (for example Python `hashlib.sha256`); the standard `sha2`
-/// crate provides that interoperability without a hand-rolled primitive whose
-/// equivalent boolean identities are impossible to cover by tests.
-fn sha256_hex(input: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-
-    let mut hasher = Sha256::new();
-    hasher.update(input);
-    format!("{:x}", hasher.finalize())
-}
-
 fn canonical_utc(value: &str) -> bool {
     value.len() == 20
         && value.ends_with('Z')
@@ -604,62 +585,7 @@ fn grant_reason(
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical_utc, sha256_hex};
-
-    #[test]
-    fn payload_digest_is_standard_sha256() {
-        // Standard FIPS 180-4 vectors, plus padding-boundary and multi-block
-        // inputs so every branch of the compression/expansion is exercised.
-        for (input, expected) in [
-            (
-                &b""[..],
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            ),
-            (
-                &b"abc"[..],
-                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-            ),
-            (
-                &b"a"[..],
-                "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
-            ),
-            (
-                &b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"[..],
-                "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
-            ),
-        ] {
-            assert_eq!(sha256_hex(input), expected);
-        }
-    }
-
-    #[test]
-    fn sha256_padding_boundaries_and_high_bit_inputs() {
-        let cases: [(Vec<u8>, &str); 5] = [
-            (
-                vec![b'a'; 55],
-                "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318",
-            ),
-            (
-                vec![b'a'; 56],
-                "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a",
-            ),
-            (
-                vec![b'a'; 64],
-                "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb",
-            ),
-            (
-                (0u8..64).collect(),
-                "fdeab9acf3710362bd2658cdc9a29e8f9c757fcf9811603a8c447cd1d9151108",
-            ),
-            (
-                (1u8..66).collect(),
-                "47e9b736f9001fab14640d9c915574c20669621520371f05a4b50906020dc49f",
-            ),
-        ];
-        for (input, expected) in cases {
-            assert_eq!(sha256_hex(&input), expected);
-        }
-    }
+    use super::canonical_utc;
 
     #[test]
     fn canonical_utc_accepts_only_the_exact_shape() {

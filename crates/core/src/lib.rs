@@ -17,6 +17,7 @@
 pub mod capability;
 pub mod context;
 pub mod decision;
+pub mod digest;
 pub mod envelope;
 pub mod evidence;
 pub mod execution;
@@ -34,6 +35,7 @@ pub use context::{
 pub use decision::{
     DecisionKind, DecisionProposal, ProviderMetadata, ProviderType, RouteConstraints,
 };
+pub use digest::{DigestError, DIGEST_SCHEMA_VERSION};
 pub use envelope::{
     ApprovalBinding, CapabilityValidation, DecisionEnvelope, EnvelopeOutcome, PolicyBinding,
     ProposalBinding, ValidationBinding,

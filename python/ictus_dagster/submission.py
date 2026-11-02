@@ -44,6 +44,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import math
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -71,6 +72,7 @@ DIGEST_TAG = "ictus.intent_digest"
 SUBMISSION_TAG = "ictus.submission_protocol"
 SUBMITTED_AT_TAG = "ictus.submitted_at"
 SUBMISSION_PROTOCOL = "v1"
+DIGEST_SCHEMA_VERSION = 1
 
 #: Name of the Dagster code location (in the daemon's workspace) that owns the
 #: jobs this bridge submits.  Required for durable submission.
@@ -125,9 +127,48 @@ def _iso(timestamp: Any) -> str | None:
     )
 
 
-def intent_digest(payload: dict[str, Any]) -> str:
-    """Return the stable digest used to bind an identity to immutable intent."""
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+class DigestDomainError(ValueError):
+    """A value cannot be reproduced in the identity-digest JSON domain."""
+
+    def __init__(self, path: str, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"{reason} at {path}")
+
+
+def require_digest_schema_version(schema_version: int) -> None:
+    """Fail closed unless the consumer's digest protocol is supported."""
+    if type(schema_version) is not int or schema_version != DIGEST_SCHEMA_VERSION:
+        raise ValueError(f"unsupported digest schema_version: {schema_version!r}")
+
+
+def _validate_digest_value(value: Any, path: str = "$") -> None:
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return
+    if isinstance(value, int):
+        if not -(2**63) <= value <= 2**64 - 1:
+            raise DigestDomainError(path, "number-out-of-domain")
+    elif isinstance(value, float):
+        if not math.isfinite(value):
+            raise DigestDomainError(path, "non-finite")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_digest_value(item, f"{path}[{index}]")
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise DigestDomainError(path, "unsupported-value")
+            _validate_digest_value(item, f"{path}.{key}")
+    else:
+        raise DigestDomainError(path, "unsupported-value")
+
+
+def intent_digest(payload: Any) -> str:
+    """Return the stable digest, rejecting values outside the shared JSON domain."""
+    _validate_digest_value(payload)
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

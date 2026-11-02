@@ -22,7 +22,12 @@ ictus-policy = { path = "crates/policy" }
 ictus-ports = { path = "crates/ports" }
 ictus-adapters = { path = "crates/adapters" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Enabled workspace-wide: the identity-digest contract (docs/IDENTITY_DIGEST.md)
+# requires a float literal to parse to the same double on both sides of the
+# Ictus/Tactus boundary. Without it serde_json's default parser rounds a
+# literal such as `9007199254740993.0` differently from CPython, which would
+# make the same fact digest differently in the two implementations.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "1"
 sha2 = "0.10"
 
