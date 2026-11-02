@@ -70,8 +70,16 @@ class StubRuntimeBackend:
         descriptor = _descriptor(workspace)
         if descriptor.get("behavior") == "describe_raises":
             raise RuntimeError("stub probe crashed")
+        if descriptor.get("behavior") == "describe_nondict":
+            return ["not a report"]  # type: ignore[return-value]
         if descriptor.get("behavior") == "describe_mistyped":
             return {"executable": descriptor["executable"]}
+        if descriptor.get("behavior") == "describe_probe_mistyped":
+            return {
+                "executable": descriptor["executable"],
+                "version_token": descriptor["version_token"],
+                "probe": {"ok": "yes", "detail": 1},
+            }
         return {
             "executable": descriptor["executable"],
             "version_token": descriptor["version_token"],
@@ -119,6 +127,18 @@ class StubRuntimeBackend:
             )
         if behavior == "scope_violation":
             return _evidence(changed_paths=["outside/escape.py"])
+        if behavior == "steps_overrun":
+            # Ask for more steps than the operator's budget allows before
+            # starting anything, so the control halts the attempt while it has
+            # no termination to report yet.
+            for _ in range(5):
+                control.step()
+            return _evidence(changed_paths=["src/stub.py"], steps_used=control.steps_used)
+        if behavior == "duration_overrun":
+            # Report an attempt whose own duration is past the operator's wall
+            # clock without the control timing out: only ``verify`` can catch a
+            # runtime that misreports how long it ran.
+            return _evidence(changed_paths=["src/stub.py"], duration_seconds=99.0)
         if behavior == "budget":
             return _evidence(changed_paths=["src/stub.py"], steps_used=99)
         if behavior == "bad_evidence":
@@ -129,6 +149,10 @@ class StubRuntimeBackend:
                 "verified": False,
                 "detail": "stub post-condition failed",
             }
+            return document
+        if behavior == "verify_mistyped":
+            document = _evidence(changed_paths=["src/stub.py"])
+            document["stub_verification"] = {"verified": "yes"}
             return document
         if behavior == "verify_raises":
             document = _evidence(changed_paths=["src/stub.py"])
@@ -162,3 +186,14 @@ class StubRuntimeBackend:
 def create_backend() -> StubRuntimeBackend:
     """The factory the seam configuration names (``module:create_backend``)."""
     return StubRuntimeBackend()
+
+
+def not_a_port() -> dict[str, Any]:
+    """A resolvable, callable backend reference that is not a port implementation.
+
+    The seam calls any attribute named in configuration and then checks the
+    result against the port, so this covers the fail-closed "named backend does
+    not implement the seam port" branch with a reference that *can* be
+    constructed (``PATCH_TEXT`` cannot be called at all).
+    """
+    return {"backend": "not a port"}

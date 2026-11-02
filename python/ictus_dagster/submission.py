@@ -486,8 +486,6 @@ def seam_evidence_from_run(
         if not isinstance(metadata, dict):
             continue
         recorded = metadata.get(SEAM_EVIDENCE_KEY)
-        if isinstance(recorded, dict):
-            return recorded
         payload = getattr(recorded, "value", None)
         if isinstance(payload, dict):
             return payload

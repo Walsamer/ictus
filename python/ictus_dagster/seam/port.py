@@ -64,14 +64,14 @@ class RuntimeBackend(Protocol):
 
     def describe_workspace(self, workspace: WorkspaceRef) -> dict[str, Any]:
         """Report the workspace runtime's identity and probe result."""
-        ...
+        raise NotImplementedError
 
     def execute(
         self, request: AttemptRequest, control: ExecutionControl
     ) -> dict[str, Any]:
         """Run one bounded attempt and return an evidence document."""
-        ...
+        raise NotImplementedError
 
     def verify(self, evidence: dict[str, Any]) -> dict[str, Any]:
         """Check the runtime's own post-conditions on the returned evidence."""
-        ...
+        raise NotImplementedError
