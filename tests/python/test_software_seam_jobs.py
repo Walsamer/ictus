@@ -44,7 +44,7 @@ from dagster._core.events import DagsterEvent, DagsterEventType
 from dagster._core.execution.api import execute_run
 
 import stub_runtime_backend as stub
-from ictus_dagster import submission
+from ictus_dagster import bridge, submission
 from ictus_dagster.adapters.contracts import validate_execution_status
 from ictus_dagster.adapters.result_mapping import execution_result_from_run
 from ictus_dagster.adapters.workflow_registry import resolve_workflow
@@ -793,6 +793,29 @@ def test_an_intent_cannot_point_at_a_real_seam_config(
     assert result.success is False
     assert result.get_failed_step_keys() == {f"{_prefix(IMPLEMENT_JOB)}_prepare_op"}
     assert submission.seam_evidence_from_run(instance, result.run_id) is None
+
+
+def test_the_in_process_bridge_has_no_seam_channel(
+    instance: DagsterInstance, seam: Callable[..., Path]
+) -> None:
+    """The synchronous bridge builds its resource from the mapper, so no seam.
+
+    ``bridge.execute_intent`` is the in-process demo path: it constructs the
+    job's resource from the intent's own arguments, and those never carry a
+    seam, so the software routes fail closed there however the deployment's
+    code location is configured.  A configured attempt needs the code
+    location's resource default (or a run config the deployment writes), which
+    the durable submission path supplies.
+    """
+    config = seam("success")
+    payload = _intent(IMPLEMENT, intent_id="attempt:bridge-no-seam")
+    payload["arguments"] = {"runtime_seam": str(config)}
+
+    result = bridge.execute_intent(payload, instance=instance)
+
+    assert result["status"] == "failed"
+    assert result["observation"]["category"] == "INTEGRATION_CONFLICT"
+    assert [item["kind"] for item in result["evidence"]] == ["dagster_run"]
 
 
 @pytest.mark.parametrize(

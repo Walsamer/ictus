@@ -186,6 +186,18 @@ keys on the run, so a location whose graph differs cannot execute that run
 record at all. That is exactly why the skeleton has to exist here, and why a
 configured backend is the only extension point.
 
+Two consequences worth knowing before you try it:
+
+- **The synchronous bridge has no seam channel.** `ictus-bridge execute-demo`
+  (and `bridge.execute_intent`) builds the job's resource from the intent's own
+  arguments, which never carry a seam, so the software routes fail closed there
+  however the deployment is configured. A running seam needs the code
+  location's resource default or a run config the deployment writes — the
+  durable submission path — not the in-process demo path.
+- **A deployment configures the seam once, in its job definition.** Per-run
+  selection is not a feature: the document names code the worker imports, so it
+  stays operator authority.
+
 ## Failure facts a control plane reads
 
 Every failure is a Dagster `Failure` with `allow_retries=False` and typed
