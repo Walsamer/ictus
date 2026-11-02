@@ -324,12 +324,12 @@ prop_compose! {
             snapshot: SnapshotRef::new("snap-1", 1, "digest-1"),
             proposal: ProposalBinding::new("p1", 2, DecisionKind::Reexecute),
             policy: PolicyBinding::new("pd1", "0.1.0", PolicyDecisionKind::Allow),
-            capability_validation: CapabilityValidation::new(
+            capability_validation: Some(CapabilityValidation::new(
                 capability,
                 true,
                 true,
                 "admitted",
-            ),
+            )),
             route: None,
             approvals: Vec::new(),
             grants: Vec::new(),
@@ -376,6 +376,32 @@ proptest! {
     ) {
         let mut candidate = envelope;
         candidate.outcome = outcome;
+        prop_assert!(candidate.validate().is_err());
+    }
+
+    #[test]
+    fn an_unknown_envelope_version_is_rejected(mut envelope in arb_envelope(), version in 3u32..1000) {
+        envelope.schema_version = version;
+        prop_assert!(envelope.validate().is_err());
+    }
+
+    #[test]
+    fn a_decision_without_a_capability_rejects_a_capability_claim(
+        envelope in arb_envelope(),
+        decision in prop::sample::select(vec![
+            DecisionKind::Escalate,
+            DecisionKind::Abort,
+            DecisionKind::Decompose,
+        ]),
+    ) {
+        // Whatever the capability string, a decision that carries no capability
+        // must never travel with a capability claim — in either version.
+        let mut candidate = envelope.clone();
+        candidate.proposal = ictus_core::ProposalBinding::new("p1", 2, decision);
+        prop_assert!(candidate.validate().is_err());
+        candidate.schema_version = 2;
+        candidate.outcome = EnvelopeOutcome::NoExecution;
+        candidate.intent = None;
         prop_assert!(candidate.validate().is_err());
     }
 

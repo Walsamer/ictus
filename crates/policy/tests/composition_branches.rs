@@ -89,6 +89,14 @@ fn snapshot() -> SnapshotRef {
     SnapshotRef::new("snap-1", 7, "digest-1")
 }
 
+fn capability_reason(envelope: &ictus_core::DecisionEnvelope) -> &str {
+    &envelope
+        .capability_validation
+        .as_ref()
+        .expect("a capability-bearing envelope carries capability_validation")
+        .reason
+}
+
 fn baseline(grants: &[ApprovalGrant]) -> ictus_policy::TrustedDecision {
     let context = context();
     let proposal = proposal();
@@ -261,11 +269,7 @@ fn grant_issued_at_must_not_be_after_the_validation_time() {
     after.issued_at = "2026-10-01T00:30:00Z".to_string();
     let trusted = baseline(&[after]);
     assert!(!trusted.envelope().is_executable());
-    assert!(trusted
-        .envelope()
-        .capability_validation
-        .reason
-        .contains("issued after validation time"));
+    assert!(capability_reason(trusted.envelope()).contains("issued after validation time"));
 }
 
 #[test]
@@ -275,11 +279,7 @@ fn grant_expiry_must_be_later_than_the_validation_time() {
     equal.expires_at = "2026-10-01T00:00:00Z".to_string();
     let trusted = baseline(&[equal]);
     assert!(!trusted.envelope().is_executable());
-    assert!(trusted
-        .envelope()
-        .capability_validation
-        .reason
-        .contains("expired"));
+    assert!(capability_reason(trusted.envelope()).contains("expired"));
 }
 
 #[test]
@@ -289,11 +289,7 @@ fn one_non_canonical_grant_timestamp_rejects_the_grant() {
     grant.expires_at = "2026-10-02T00:00:00+00:00".to_string();
     let trusted = baseline(&[grant]);
     assert!(!trusted.envelope().is_executable());
-    assert!(trusted
-        .envelope()
-        .capability_validation
-        .reason
-        .contains("canonical UTC"));
+    assert!(capability_reason(trusted.envelope()).contains("canonical UTC"));
 }
 
 #[test]
@@ -313,4 +309,208 @@ fn non_baseline_policy_version_denies_before_other_checks() {
         .unwrap();
     assert_eq!(trusted.envelope().outcome, EnvelopeOutcome::Denied);
     assert_eq!(trusted.envelope().policy.verdict, PolicyDecisionKind::Deny);
+}
+
+// -- decisions that carry no capability --------------------------------------
+//
+// `ESCALATE`, `ABORT` and `DECOMPOSE` are the decisions where a human takes
+// over, the work stops or is split. They carry no capability, so their envelope
+// is v2: the same binding and the same digest chain as an execution envelope,
+// with no `capability_validation`, no approvals and no intent.
+
+fn no_capability_proposal(decision: DecisionKind) -> DecisionProposal {
+    DecisionProposal::new(
+        "proposal-2",
+        decision,
+        Subject::new("task", "t1"),
+        ProviderMetadata::rules("rules.v1"),
+        "2026-10-01T00:00:00Z",
+    )
+}
+
+fn compose_no_capability(proposal: &DecisionProposal) -> ictus_policy::TrustedDecision {
+    let context = context();
+    let registry = registry();
+    // The snapshot binding is built exactly as the bridge builds it: Ictus's own
+    // digest over the snapshot as received.
+    let snapshot = SnapshotRef::new(
+        &context.snapshot.snapshot_id,
+        context.revision,
+        context.snapshot.content_digest(),
+    );
+    compose_with(
+        &context,
+        snapshot,
+        proposal,
+        &registry,
+        &[],
+        "2026-10-01T01:00:00Z",
+    )
+}
+
+fn proposal_digest(proposal: &DecisionProposal) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(serde_json::to_vec(proposal).unwrap());
+    format!("{:x}", hasher.finalize())
+}
+
+#[test]
+fn an_escalation_envelope_is_v2_without_a_capability() {
+    let trusted = compose_no_capability(&no_capability_proposal(DecisionKind::Escalate));
+    let envelope = trusted.envelope();
+    envelope.validate().unwrap();
+    assert_eq!(envelope.schema_version, ictus_core::ENVELOPE_SCHEMA_VERSION);
+    assert_eq!(envelope.schema_version, 2);
+    assert_eq!(envelope.proposal.decision, DecisionKind::Escalate);
+    assert_eq!(envelope.outcome, EnvelopeOutcome::NoExecution);
+    assert!(!envelope.outcome.is_executable());
+    assert!(envelope.capability_validation.is_none());
+    assert!(envelope.intent.is_none());
+    assert!(envelope.approvals.is_empty());
+    assert!(envelope.grants.is_empty());
+    // Escalation is a valid, permitted policy result (an escalation never
+    // reaches the execution backend), never a denial or an invalid result.
+    assert_eq!(envelope.policy.verdict, PolicyDecisionKind::Allow);
+    assert_eq!(envelope.policy.policy_version, DEFAULT_POLICY_VERSION);
+    assert!(trusted.executable_intent().is_none());
+    // The serialized form omits the capability claim entirely.
+    let json = serde_json::to_value(envelope).unwrap();
+    assert!(json.get("capability_validation").is_none(), "{json}");
+    assert!(json.get("intent").is_none(), "{json}");
+}
+
+#[test]
+fn an_abort_or_decompose_envelope_is_v2_and_no_execution() {
+    let abort = compose_no_capability(&no_capability_proposal(DecisionKind::Abort));
+    abort.envelope().validate().unwrap();
+    assert_eq!(abort.envelope().outcome, EnvelopeOutcome::NoExecution);
+    assert!(abort.envelope().capability_validation.is_none());
+
+    let decompose = no_capability_proposal(DecisionKind::Decompose).with_argument(
+        "decomposition_plan",
+        serde_json::json!({
+            "plan_id": "plan-1",
+            "children": [{ "subject_id": "t1-a", "capability": "software.promote" }]
+        }),
+    );
+    let decompose = compose_no_capability(&decompose);
+    decompose.envelope().validate().unwrap();
+    assert_eq!(decompose.envelope().outcome, EnvelopeOutcome::NoExecution);
+    assert!(decompose.envelope().capability_validation.is_none());
+    assert_eq!(
+        decompose.envelope().proposal.decision,
+        DecisionKind::Decompose
+    );
+}
+
+#[test]
+fn an_escalation_envelope_binds_the_same_digests_as_an_execution_envelope() {
+    let proposal = no_capability_proposal(DecisionKind::Escalate);
+    let context = context();
+    let trusted = compose_no_capability(&proposal);
+    let envelope = trusted.envelope();
+    envelope.validate().unwrap();
+
+    // The proposal payload is bound by the digest of its canonical bytes, exactly
+    // as for an execution envelope.
+    assert_eq!(
+        envelope.validation.proposal_digest,
+        proposal_digest(&proposal)
+    );
+    // The snapshot is bound by Ictus's own digest over the snapshot, its id and
+    // its revision.
+    assert_eq!(
+        envelope.snapshot.digest,
+        context.snapshot.content_digest(),
+        "the escalation envelope must bind the snapshot exactly as received"
+    );
+    assert_eq!(envelope.snapshot.snapshot_id, "snap-1");
+    assert_eq!(envelope.snapshot.revision, context.revision);
+    // The remaining binding fields are the same set an execution envelope
+    // carries, and none of them is a capability.
+    assert_eq!(envelope.validation.context_id, context.context_id);
+    assert_eq!(envelope.validation.validated_at, proposal.proposed_at);
+    assert_eq!(
+        envelope.validation.capability_version,
+        ictus_policy::NO_CAPABILITY_VERSION
+    );
+    assert_eq!(envelope.subject, context.snapshot.subject);
+    assert_eq!(envelope.proposal.proposal_id, proposal.proposal_id);
+    assert_eq!(envelope.proposal.schema_version, proposal.schema_version);
+    assert_eq!(envelope.expiry, "2026-10-01T01:00:00Z");
+    assert_eq!(
+        envelope.policy.policy_decision_id,
+        format!("policy:{}", proposal.proposal_id)
+    );
+
+    // The same binding rejects a different proposal payload: changing one
+    // argument moves the digest, so a stale envelope cannot be replayed.
+    let mut changed = no_capability_proposal(DecisionKind::Escalate);
+    changed.reason = Some("different rationale".to_string());
+    assert_ne!(
+        envelope.validation.proposal_digest,
+        proposal_digest(&changed)
+    );
+}
+
+#[test]
+fn a_capability_decision_keeps_the_v1_envelope_shape() {
+    let trusted = baseline(&[grant()]);
+    let envelope = trusted.envelope();
+    assert_eq!(envelope.schema_version, 1);
+    assert!(envelope.capability_validation.is_some());
+    assert_eq!(envelope.outcome, EnvelopeOutcome::Executable);
+    // v1 keeps every field a consumer already reads, in the same shape.
+    let json = serde_json::to_value(envelope).unwrap();
+    assert!(json.get("capability_validation").is_some(), "{json}");
+}
+
+#[test]
+fn a_refused_decision_without_a_capability_is_denied_not_no_execution() {
+    // A structurally invalid proposal is denied by policy; the envelope must
+    // record the refusal rather than claim the decision stands.
+    let mut proposal = no_capability_proposal(DecisionKind::Escalate);
+    proposal.provider.provider_id = String::new();
+    let trusted = compose_no_capability(&proposal);
+    let envelope = trusted.envelope();
+    envelope.validate().unwrap();
+    assert_eq!(envelope.outcome, EnvelopeOutcome::Denied);
+    assert_eq!(envelope.policy.verdict, PolicyDecisionKind::Deny);
+    assert!(envelope.capability_validation.is_none());
+    assert_eq!(envelope.schema_version, 2);
+}
+
+#[test]
+fn a_refused_decision_without_a_capability_still_hands_out_a_valid_envelope() {
+    // The refusal paths must not slip an artifact past the trust boundary: a
+    // proposal that carries a route as well as a decision with no capability is
+    // refused (route constraints are only valid for ROUTE), and the envelope
+    // records the refusal without the route.
+    let context = context();
+    let mut proposal = no_capability_proposal(DecisionKind::Escalate);
+    proposal.route = Some(ictus_core::RouteConstraints::new().with_preferred_backend("backend.b"));
+    let registry = registry();
+    let trusted = compose_with(
+        &context,
+        snapshot(),
+        &proposal,
+        &registry,
+        &[],
+        "2026-10-01T01:00:00Z",
+    );
+    let envelope = trusted.envelope();
+    envelope.validate().unwrap();
+    assert_eq!(envelope.outcome, EnvelopeOutcome::Denied);
+    assert_eq!(envelope.policy.verdict, PolicyDecisionKind::Deny);
+    assert!(envelope.route.is_none());
+    assert!(envelope.capability_validation.is_none());
+    assert_eq!(envelope.schema_version, 2);
+    // The refusal still carries the full binding, so it is as verifiable as any
+    // other envelope.
+    assert_eq!(
+        envelope.validation.proposal_digest,
+        proposal_digest(&proposal)
+    );
+    assert_eq!(envelope.validation.context_id, context.context_id);
 }

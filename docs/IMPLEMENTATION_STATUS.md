@@ -41,7 +41,12 @@ The contracts exist, the Rust and schema tests cover them, and this repository
 emits both of them now: the envelope from `ictus decide --context`
 (`crates/bridge/src/main.rs`) and the observation from
 `ictus_dagster.result_to_observation`
-(`python/ictus_dagster/adapters/result_mapping.py`). What remains:
+(`python/ictus_dagster/adapters/result_mapping.py`). The envelope carries two
+versions: `schema_version: 1` is the frozen capability-bearing shape, and
+`schema_version: 2` carries `capability_validation` only when the decision
+carries a capability, so an `ESCALATE`, `ABORT` or `DECOMPOSE` crosses it with
+outcome `NO_EXECUTION` and `decide --context` exits 3 with that envelope instead
+of printing nothing (ADR 0003). What remains:
 
 - **The control plane has not switched.** Tactus still admits the legacy
   `{schema_version, proposal, policy_decision, execution_intent}` triple on
@@ -50,11 +55,6 @@ emits both of them now: the envelope from `ictus decide --context`
   still assembles the observation in a harness script
   (`scripts/validate_execution_slice.py`, `_observation_from_result`). Its side
   of the change is tracked in that repository; this one cannot make it.
-- **A decision that requires no capability cannot cross the envelope.**
-  `capability_validation.capability` is required and non-empty, so an
-  `ESCALATE` or `ABORT` proposal fails envelope validation and
-  `decide --context` prints nothing (exit 2, reproduced with an exhausted and an
-  `abort_on_exhaustion` recovery context). The contract question is open.
 - **No shared cross-repository fixtures are held here.** The five-scenario slice
   is proven by the Tactus repository (`Walsamer/tactus#12`), not by fixtures in
   this repository that assert the Rust, Python and Tactus contracts against each

@@ -673,6 +673,8 @@ fn decide_context_invalid_context_is_reported_as_invalid() {
     assert!(envelope.intent.is_none());
     assert!(envelope
         .capability_validation
+        .as_ref()
+        .expect("a capability-bearing envelope carries capability_validation")
         .reason
         .contains("invalid context"));
 }
@@ -700,6 +702,84 @@ fn decide_context_rejects_legacy_token_approvals() {
         assert!(stderr.contains("USAGE"), "stderr: {stderr}");
     }
     let _ = std::fs::remove_file(&approvals);
+}
+
+#[test]
+fn decide_context_exhausted_budget_escalates_through_the_envelope() {
+    // The decision where a human authorizes something crosses the validated
+    // envelope as well: exit 3 (non-executable) with a v2 envelope on stdout, not
+    // exit 2 with nothing.
+    let input = patched(RECOVERY_CONTEXT, |context| {
+        set_fact(context, "attempts.semantic", serde_json::json!(2));
+        context["attempts"]["semantic_attempts"] = serde_json::json!(2);
+    });
+    let out = run(
+        &[
+            "decide",
+            "--context",
+            "--capabilities",
+            &example("capabilities.json"),
+        ],
+        &input,
+        &[],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(3),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        out.stderr.is_empty(),
+        "an escalation is not an error: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let printed = envelope(&out);
+    printed.validate().unwrap();
+    assert_eq!(printed.proposal.decision, DecisionKind::Escalate);
+    assert_eq!(printed.outcome, EnvelopeOutcome::NoExecution);
+    assert_eq!(printed.schema_version, 2);
+    assert!(printed.capability_validation.is_none());
+    assert!(printed.intent.is_none());
+    assert_snapshot_digest(&printed);
+    // The same binding an execution envelope carries: the snapshot digest Ictus
+    // computed itself and the digest of the proposal it validated.
+    let context: DecisionContext = serde_json::from_str(&input).unwrap();
+    assert_eq!(printed.snapshot.digest, context.snapshot.content_digest());
+    assert_eq!(printed.snapshot.revision, context.revision);
+    assert_eq!(printed.validation.context_id, context.context_id);
+    assert_eq!(printed.validation.proposal_digest.len(), 64);
+    assert_eq!(
+        printed.validation.capability_version,
+        ictus_policy::NO_CAPABILITY_VERSION
+    );
+    let json = serde_json::to_value(&printed).unwrap();
+    assert!(json.get("capability_validation").is_none(), "{json}");
+    assert!(json.get("intent").is_none(), "{json}");
+}
+
+#[test]
+fn decide_context_abort_on_exhaustion_crosses_the_envelope() {
+    // The second reproduction of the defect: `abort_on_exhaustion` resolves to
+    // ABORT, which also carries no capability.
+    let input = patched(RECOVERY_CONTEXT, |context| {
+        set_fact(context, "attempts.semantic", serde_json::json!(2));
+        context["attempts"]["semantic_attempts"] = serde_json::json!(2);
+        context["snapshot"]["constraints"] = serde_json::json!(["abort_on_exhaustion"]);
+    });
+    let out = run(&["decide", "--context"], &input, &[]);
+    assert_eq!(
+        out.status.code(),
+        Some(3),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let printed = envelope(&out);
+    printed.validate().unwrap();
+    assert_eq!(printed.proposal.decision, DecisionKind::Abort);
+    assert_eq!(printed.outcome, EnvelopeOutcome::NoExecution);
+    assert_eq!(printed.schema_version, 2);
+    assert!(printed.capability_validation.is_none() && printed.intent.is_none());
 }
 
 #[test]

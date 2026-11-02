@@ -12,7 +12,8 @@ use ictus_core::{
     ExecutionStatus, Fact, ObservationCategory, PolicyBinding, PolicyDecision, PolicyDecisionKind,
     ProposalBinding, ProviderMetadata, ProviderType, RecoveryBinding, RequestedBy, RiskClass,
     RouteConstraints, SnapshotRef, StateSnapshot, Subject, ValidationBinding,
-    DECISION_SCHEMA_VERSION, LEGACY_DECISION_SCHEMA_VERSION, SCHEMA_VERSION,
+    DECISION_SCHEMA_VERSION, ENVELOPE_SCHEMA_VERSION, LEGACY_DECISION_SCHEMA_VERSION,
+    LEGACY_ENVELOPE_SCHEMA_VERSION, SCHEMA_VERSION,
 };
 
 fn subject() -> Subject {
@@ -644,7 +645,12 @@ fn make_envelope() -> DecisionEnvelope {
         snapshot: SnapshotRef::new("snap-1", 2, "digest-1"),
         proposal: ProposalBinding::new("p1", 2, DecisionKind::Reexecute),
         policy: PolicyBinding::new("pd1", "0.1.0", PolicyDecisionKind::Allow),
-        capability_validation: CapabilityValidation::new("demo.verify", true, true, "admitted"),
+        capability_validation: Some(CapabilityValidation::new(
+            "demo.verify",
+            true,
+            true,
+            "admitted",
+        )),
         route: None,
         approvals: Vec::new(),
         grants: Vec::new(),
@@ -870,7 +876,7 @@ fn envelope_rejects_capability_or_subject_mismatch() {
 #[test]
 fn envelope_rejects_executable_without_capability_permission() {
     let mut envelope = make_envelope().with_intent(make_intent());
-    envelope.capability_validation.permitted = false;
+    envelope.capability_validation.as_mut().unwrap().permitted = false;
     assert!(envelope.validate().is_err());
 }
 
@@ -885,7 +891,7 @@ fn envelope_validation_rejects_blank_bindings() {
     assert!(envelope.validate().is_err());
 
     let mut envelope = make_envelope().with_intent(make_intent());
-    envelope.capability_validation.reason = String::new();
+    envelope.capability_validation.as_mut().unwrap().reason = String::new();
     assert!(envelope.validate().is_err());
 
     let mut envelope = make_envelope().with_intent(make_intent());
@@ -897,7 +903,7 @@ fn envelope_validation_rejects_blank_bindings() {
     assert!(envelope.validate().is_err());
 
     let mut envelope = make_envelope().with_intent(make_intent());
-    envelope.schema_version = 2;
+    envelope.schema_version = 3;
     assert!(envelope.validate().is_err());
 }
 
@@ -999,6 +1005,255 @@ fn envelope_rejects_blank_route_constraint() {
         .with_route(RouteConstraints::new().with_required_runtime("  "))
         .with_intent(make_intent());
     assert!(envelope.validate().is_err());
+}
+
+// -- envelope versions and the capability claim ------------------------------
+//
+// `capability_validation` exists exactly when the decision carries a capability.
+// v1 is the frozen capability-bearing shape; v2 also describes a decision that
+// carries none (`ESCALATE`, `ABORT`, `DECOMPOSE`), whose outcome is
+// `NO_EXECUTION`.
+
+fn make_no_capability_envelope() -> DecisionEnvelope {
+    DecisionEnvelope {
+        schema_version: 2,
+        envelope_id: "env-2".to_string(),
+        subject: subject(),
+        snapshot: SnapshotRef::new("snap-1", 2, "digest-1"),
+        proposal: ProposalBinding::new("p2", 2, DecisionKind::Escalate),
+        policy: PolicyBinding::new("pd2", "0.1.0", PolicyDecisionKind::Allow),
+        capability_validation: None,
+        route: None,
+        approvals: Vec::new(),
+        grants: Vec::new(),
+        validation: ValidationBinding::new(
+            "ctx-1",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            "not-applicable",
+            "2026-10-01T00:00:00Z",
+        ),
+        outcome: EnvelopeOutcome::NoExecution,
+        expiry: "2026-10-01T01:00:00Z".to_string(),
+        intent: None,
+    }
+}
+
+#[test]
+fn envelope_schema_version_is_decided_by_the_decision_kind() {
+    for decision in [
+        DecisionKind::ExecuteCapability,
+        DecisionKind::Reexecute,
+        DecisionKind::Route,
+    ] {
+        assert!(
+            decision.requires_capability(),
+            "{decision:?} must carry a capability"
+        );
+        assert_eq!(DecisionEnvelope::schema_version_for(decision), 1);
+    }
+    for decision in [
+        DecisionKind::Escalate,
+        DecisionKind::Abort,
+        DecisionKind::Decompose,
+    ] {
+        assert!(
+            !decision.requires_capability(),
+            "{decision:?} must not carry a capability"
+        );
+        assert_eq!(DecisionEnvelope::schema_version_for(decision), 2);
+    }
+    assert_eq!(
+        ENVELOPE_SCHEMA_VERSION,
+        DecisionEnvelope::schema_version_for(DecisionKind::Escalate)
+    );
+    assert_eq!(
+        LEGACY_ENVELOPE_SCHEMA_VERSION,
+        DecisionEnvelope::schema_version_for(DecisionKind::Reexecute)
+    );
+}
+
+#[test]
+fn an_escalation_envelope_carries_no_capability_and_validates() {
+    let envelope = make_no_capability_envelope();
+    envelope.validate().unwrap();
+    assert!(!envelope.is_executable());
+    assert!(envelope.capability_validation.is_none());
+    let json = serde_json::to_value(&envelope).unwrap();
+    assert!(json.get("capability_validation").is_none(), "{json}");
+    assert!(json.get("intent").is_none(), "{json}");
+    assert_eq!(json["outcome"], serde_json::json!("NO_EXECUTION"));
+    assert_eq!(json["schema_version"], serde_json::json!(2));
+}
+
+#[test]
+fn a_capability_bearing_decision_requires_capability_validation() {
+    for decision in [
+        DecisionKind::ExecuteCapability,
+        DecisionKind::Reexecute,
+        DecisionKind::Route,
+    ] {
+        // The executable case.
+        let mut envelope = make_envelope().with_intent(make_intent());
+        envelope.proposal = ProposalBinding::new("p1", 2, decision);
+        envelope.capability_validation = None;
+        assert!(
+            envelope.validate().is_err(),
+            "{decision:?} without capability_validation must be rejected"
+        );
+        // The refusal cases, where no other rule can reject the missing
+        // capability: the rule must hold for every outcome, not only EXECUTABLE.
+        for outcome in [
+            EnvelopeOutcome::Denied,
+            EnvelopeOutcome::Pending,
+            EnvelopeOutcome::NoRoute,
+            EnvelopeOutcome::Invalid,
+        ] {
+            let mut envelope = make_envelope();
+            envelope.proposal = ProposalBinding::new("p1", 2, decision);
+            envelope.capability_validation = None;
+            envelope.outcome = outcome;
+            assert!(
+                envelope.validate().is_err(),
+                "{decision:?} without capability_validation must be rejected even when {outcome:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_decision_without_a_capability_must_not_claim_capability_validation() {
+    // The forbidden fragment: a capability on a decision that carries none is
+    // exactly the self-asserted validation the contract refuses to model.
+    let mut envelope = make_no_capability_envelope();
+    envelope.capability_validation = Some(CapabilityValidation::new(
+        "demo.verify",
+        true,
+        true,
+        "admitted",
+    ));
+    assert!(envelope.validate().is_err());
+}
+
+#[test]
+fn schema_version_1_cannot_describe_a_decision_without_a_capability() {
+    // v1 keeps its frozen meaning: it always carries capability_validation, so a
+    // decision that carries no capability cannot be expressed in it.
+    let mut envelope = make_no_capability_envelope();
+    envelope.schema_version = 1;
+    assert!(envelope.validate().is_err());
+
+    // The same decision under v2 validates, so the rejection is about the
+    // version and not about the decision.
+    make_no_capability_envelope().validate().unwrap();
+}
+
+#[test]
+fn v1_stops_accepting_a_capability_claim_on_a_decision_that_carries_none() {
+    // Exactly one thing narrowed in v1: the previous build accepted a v1
+    // envelope that claimed a capability for ESCALATE, ABORT or DECOMPOSE
+    // (which the previous composition emitted for a DECOMPOSE carrying a
+    // capability). Such a claim is now a contract error in either version.
+    for decision in [
+        DecisionKind::Escalate,
+        DecisionKind::Abort,
+        DecisionKind::Decompose,
+    ] {
+        let mut envelope = make_envelope();
+        envelope.proposal = ProposalBinding::new("p1", 2, decision);
+        envelope.schema_version = 1;
+        envelope.outcome = EnvelopeOutcome::Invalid;
+        assert!(
+            envelope.validate().is_err(),
+            "a v1 {decision:?} envelope must not keep a capability claim"
+        );
+    }
+}
+
+#[test]
+fn schema_version_2_also_describes_a_capability_bearing_decision() {
+    // v2 is the conditional contract, not a format for non-executing decisions
+    // only: a capability-bearing decision under v2 still requires and validates
+    // its capability.
+    let mut envelope = make_envelope().with_intent(make_intent());
+    envelope.schema_version = 2;
+    envelope.validate().unwrap();
+
+    envelope.capability_validation = None;
+    assert!(envelope.validate().is_err());
+}
+
+#[test]
+fn no_execution_is_only_for_a_decision_that_carries_no_capability() {
+    // No intent, so this fails on the outcome rule alone rather than on the
+    // "only EXECUTABLE may carry an intent" rule.
+    let mut envelope = make_envelope();
+    envelope.outcome = EnvelopeOutcome::NoExecution;
+    assert!(envelope.validate().is_err());
+}
+
+#[test]
+fn no_execution_cannot_carry_a_refusing_verdict() {
+    // NO_EXECUTION claims the decision was permitted.
+    make_no_capability_envelope().validate().unwrap();
+    let mut denying = make_no_capability_envelope();
+    denying.policy.verdict = PolicyDecisionKind::Deny;
+    assert!(denying.validate().is_err());
+
+    let mut modifying = make_no_capability_envelope();
+    modifying.policy.verdict = PolicyDecisionKind::Modify;
+    modifying.validate().unwrap();
+}
+
+#[test]
+fn a_decision_without_a_capability_has_no_approval_gate_and_no_route() {
+    // PENDING is an unsatisfied approval on a capability and NO_ROUTE is a
+    // missing route for a capability; neither can describe such a decision.
+    for outcome in [EnvelopeOutcome::Pending, EnvelopeOutcome::NoRoute] {
+        let mut envelope = make_no_capability_envelope();
+        envelope.outcome = outcome;
+        envelope.policy.verdict = if outcome == EnvelopeOutcome::Pending {
+            PolicyDecisionKind::RequireApproval
+        } else {
+            PolicyDecisionKind::Allow
+        };
+        assert!(
+            envelope.validate().is_err(),
+            "{outcome:?} must not describe a decision that carries no capability"
+        );
+    }
+    // The refusal outcomes that can: policy refused it, or it was not valid.
+    for outcome in [EnvelopeOutcome::Denied, EnvelopeOutcome::Invalid] {
+        let mut envelope = make_no_capability_envelope();
+        envelope.outcome = outcome;
+        envelope.policy.verdict = PolicyDecisionKind::Deny;
+        envelope.validate().unwrap();
+    }
+}
+
+#[test]
+fn no_execution_never_carries_an_intent() {
+    let mut envelope = make_no_capability_envelope();
+    envelope.intent = Some(make_intent());
+    assert!(envelope.validate().is_err());
+}
+
+#[test]
+fn an_envelope_without_a_capability_binds_no_approvals_grants_or_route() {
+    make_no_capability_envelope().validate().unwrap();
+
+    let mut with_approval = make_no_capability_envelope();
+    with_approval
+        .approvals
+        .push(ApprovalBinding::new("human.promote", true));
+    assert!(with_approval.validate().is_err());
+
+    let mut with_grant = make_no_capability_envelope();
+    with_grant.grants.push(bound_grant());
+    assert!(with_grant.validate().is_err());
+
+    let mut with_route = make_no_capability_envelope();
+    with_route.route = Some(RouteConstraints::new().with_preferred_backend("backend.b"));
+    assert!(with_route.validate().is_err());
 }
 
 // -- modified-proposal revalidation -----------------------------------------

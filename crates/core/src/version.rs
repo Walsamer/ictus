@@ -30,9 +30,43 @@ pub const LEGACY_DECISION_SCHEMA_VERSION: u32 = 1;
 /// [`DECISION_SCHEMA_VERSION`].
 pub const CONTEXT_SCHEMA_VERSION: u32 = 1;
 
-/// The current schema version of the versioned validated
-/// `DecisionEnvelope` contract. Per-contract, independently versioned.
-pub const ENVELOPE_SCHEMA_VERSION: u32 = 1;
+/// The current schema version of the versioned validated `DecisionEnvelope`
+/// contract: the **conditional** shape.
+///
+/// In v2 `capability_validation` is present exactly when the decision carries a
+/// capability (`EXECUTE_CAPABILITY`, `REEXECUTE`, `ROUTE`) and absent for the
+/// decisions that carry none (`ESCALATE`, `ABORT`, `DECOMPOSE`), whose resolved
+/// outcome is [`crate::EnvelopeOutcome::NoExecution`]. This is what lets the
+/// moment a human authorizes something cross the validated envelope instead of
+/// staying on the legacy unvalidated triple, without inventing a capability.
+/// Per-contract, independently versioned.
+pub const ENVELOPE_SCHEMA_VERSION: u32 = 2;
+
+/// The frozen v1 `DecisionEnvelope` shape, still emitted for capability-bearing
+/// decisions and still accepted on input.
+///
+/// v1 always carries `capability_validation`, so it describes only a
+/// capability-bearing decision. Its fields, its requirements and its output for
+/// those decisions are unchanged; exactly one thing narrowed, deliberately: v1
+/// no longer accepts a capability claim on a decision that carries none
+/// (`ESCALATE`, `ABORT`, `DECOMPOSE`), because such a claim is the fabricated
+/// validation this contract exists to refuse. The previous build accepted it
+/// and the composition emitted it for a `DECOMPOSE` carrying a capability.
+pub const LEGACY_ENVELOPE_SCHEMA_VERSION: u32 = 1;
+
+/// Accept both `DecisionEnvelope` versions this build writes.
+///
+/// `1` is the frozen capability-bearing shape and `2` is the conditional one.
+/// Anything else fails closed rather than being read as a successor.
+pub fn check_envelope_version(found: u32) -> Result<(), ContractError> {
+    match found {
+        LEGACY_ENVELOPE_SCHEMA_VERSION | ENVELOPE_SCHEMA_VERSION => Ok(()),
+        other => Err(ContractError::UnsupportedSchemaVersion {
+            found: other,
+            supported: ENVELOPE_SCHEMA_VERSION,
+        }),
+    }
+}
 
 /// Reject any version other than the supported one for a specific contract.
 ///
@@ -106,6 +140,21 @@ mod tests {
                 supported: 1,
             }
         );
+    }
+
+    #[test]
+    fn both_envelope_versions_are_accepted_and_a_successor_is_not() {
+        assert!(check_envelope_version(LEGACY_ENVELOPE_SCHEMA_VERSION).is_ok());
+        assert!(check_envelope_version(ENVELOPE_SCHEMA_VERSION).is_ok());
+        for unsupported in [0, ENVELOPE_SCHEMA_VERSION + 1, 99] {
+            assert_eq!(
+                check_envelope_version(unsupported).unwrap_err(),
+                ContractError::UnsupportedSchemaVersion {
+                    found: unsupported,
+                    supported: ENVELOPE_SCHEMA_VERSION,
+                }
+            );
+        }
     }
 
     #[test]

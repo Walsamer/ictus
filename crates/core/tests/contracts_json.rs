@@ -9,7 +9,7 @@ use ictus_core::{
     AttemptBudget, ContextKind, ContractError, DecisionContext, DecisionEnvelope, DecisionKind,
     EnvelopeOutcome, ExecutionIntent, ExecutionObservation, ExecutionResult, ExecutionStatus, Fact,
     ObservationCategory, PolicyDecision, PolicyDecisionKind, SnapshotRef, StateSnapshot,
-    SCHEMA_VERSION,
+    ENVELOPE_SCHEMA_VERSION, SCHEMA_VERSION,
 };
 
 #[test]
@@ -175,6 +175,10 @@ const GRANTED_ENVELOPE_JSON: &str =
 const DENIED_ENVELOPE_JSON: &str = include_str!("../../../examples/decision-envelope.denied.json");
 const PENDING_ENVELOPE_JSON: &str =
     include_str!("../../../examples/decision-envelope.pending.json");
+const ESCALATED_ENVELOPE_JSON: &str =
+    include_str!("../../../examples/decision-envelope.escalated.json");
+const ABORTED_ENVELOPE_JSON: &str =
+    include_str!("../../../examples/decision-envelope.aborted.json");
 
 #[test]
 fn initial_context_fixture_has_no_observation_and_validates() {
@@ -222,10 +226,46 @@ fn executable_envelope_fixture_binds_every_required_fact() {
     assert_eq!(envelope.proposal.decision, DecisionKind::Reexecute);
     assert_eq!(envelope.proposal.schema_version, 2);
     assert_eq!(envelope.policy.verdict, PolicyDecisionKind::Allow);
-    assert!(envelope.capability_validation.admitted && envelope.capability_validation.permitted);
+    let capability_validation = envelope.capability_validation.as_ref().unwrap();
+    assert!(capability_validation.admitted && capability_validation.permitted);
     let intent = envelope.intent.as_ref().unwrap();
-    assert_eq!(intent.capability, envelope.capability_validation.capability);
+    assert_eq!(intent.capability, capability_validation.capability);
     assert_eq!(intent.target, envelope.subject);
+}
+
+#[test]
+fn escalated_envelope_fixture_is_v2_without_a_capability() {
+    // The escalation example is the real envelope `decide --context` prints for
+    // an exhausted semantic budget: it travels in the same binding as an
+    // execution envelope and carries no capability claim at all.
+    let envelope: DecisionEnvelope = serde_json::from_str(ESCALATED_ENVELOPE_JSON).unwrap();
+    envelope.validate().unwrap();
+    assert_eq!(envelope.schema_version, ENVELOPE_SCHEMA_VERSION);
+    assert_eq!(envelope.proposal.decision, DecisionKind::Escalate);
+    assert_eq!(envelope.outcome, EnvelopeOutcome::NoExecution);
+    assert!(!envelope.is_executable());
+    assert!(envelope.capability_validation.is_none());
+    assert!(envelope.intent.is_none());
+    assert!(envelope.approvals.is_empty() && envelope.grants.is_empty());
+    assert_eq!(envelope.policy.verdict, PolicyDecisionKind::Allow);
+    assert_eq!(envelope.validation.proposal_digest.len(), 64);
+    assert_eq!(envelope.snapshot.digest.len(), 64);
+    let json = serde_json::to_value(&envelope).unwrap();
+    assert!(json.get("capability_validation").is_none(), "{json}");
+}
+
+#[test]
+fn aborted_envelope_fixture_is_v2_without_a_capability() {
+    // `abort_on_exhaustion` is the other non-executing decision the recovery
+    // provider can reach; the second reproduction of the defect.
+    let envelope: DecisionEnvelope = serde_json::from_str(ABORTED_ENVELOPE_JSON).unwrap();
+    envelope.validate().unwrap();
+    assert_eq!(envelope.schema_version, ENVELOPE_SCHEMA_VERSION);
+    assert_eq!(envelope.proposal.decision, DecisionKind::Abort);
+    assert_eq!(envelope.outcome, EnvelopeOutcome::NoExecution);
+    assert!(envelope.capability_validation.is_none());
+    assert!(envelope.intent.is_none());
+    assert_eq!(envelope.policy.verdict, PolicyDecisionKind::Allow);
 }
 
 #[test]

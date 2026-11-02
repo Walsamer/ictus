@@ -211,6 +211,40 @@ execution, and Fleet owns Fleet state. M4 adds **no** runtime coupling.
   `crates/policy/src/{rules,evaluator}.rs`, and the decision tables in
   `crates/policy/tests/recovery.rs`.
 
+## DEC-016 — the envelope is versioned, and capability validation is conditional on the decision
+
+- **Decision:** `capability_validation` is required exactly for the decisions
+  that carry a capability (`EXECUTE_CAPABILITY`, `REEXECUTE`, `ROUTE`) and must
+  be absent for `ESCALATE`, `ABORT` and `DECOMPOSE`, which resolve to the new
+  `NO_EXECUTION` outcome when policy permits them (and stay `DENIED` or
+  `INVALID` when it refuses them), carry no intent and bind no approvals, grants
+  or route. The condition is expressed in `contracts/decision-envelope.schema.json`
+  itself. The envelope contract is at `schema_version: 2`; the frozen `1` is
+  still emitted for a capability-bearing decision (byte-identical output) and
+  still accepted on input, while v2 is accepted for either kind. One thing
+  narrowed in v1 on purpose: a v1 envelope claiming a capability for
+  `ESCALATE`, `ABORT` or `DECOMPOSE` is now a contract error. Unknown versions
+  fail closed. Recorded in
+  `docs/adr/0003-decision-envelope-v2-conditional-capability.md`.
+- **Why:** without it, the decision where a human authorizes something could not
+  cross the validated envelope (`missing required field:
+  capability_validation.capability`, exit 2 with empty stdout, reproduced with
+  an exhausted 2/2 semantic budget and with `abort_on_exhaustion`), so it had to
+  stay on the legacy unvalidated triple while routine execution became
+  verifiable. Fabricating a capability to satisfy the field was rejected: that
+  is the self-asserted `ALLOW` the architecture forbids.
+- **Boundaries:** decision semantics are untouched — no new proposal kinds, no
+  policy weakening, no change to when escalation, abort or decomposition is
+  chosen. The bridge's exit-code map is unchanged (0 / 3 / 2); an escalation now
+  exits 3 with an envelope instead of 2 with nothing.
+- **Enforced by:** `contracts/decision-envelope.schema.json`,
+  `crates/core/src/{envelope,version}.rs`,
+  `crates/policy/src/composition.rs`, and the tests in
+  `crates/core/tests/{contracts_api,contracts_json,properties}.rs`,
+  `crates/policy/tests/composition_branches.rs`,
+  `crates/bridge/tests/cli.rs` and
+  `tests/python/test_contracts_schemas.py`.
+
 ## Open decisions (not yet made)
 
 - **License holder scope.** Apache-2.0 is adopted with the copyright holder

@@ -168,6 +168,8 @@ fn wildcard_demo_token_is_not_a_domain_grant_for_high_risk_work() {
     assert!(trusted
         .envelope()
         .capability_validation
+        .as_ref()
+        .expect("a capability-bearing envelope carries capability_validation")
         .reason
         .contains("demo-only"));
 }
