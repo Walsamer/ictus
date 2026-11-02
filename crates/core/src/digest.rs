@@ -439,7 +439,9 @@ fn format_f64(value: f64) -> String {
 
 /// The shortest round-trip decimal of `value` and its decimal-point position:
 /// `value == 0.<digits> * 10^decimals`, with a signed digit string that carries
-/// no leading or trailing zeros.
+/// no leading zeros. Trailing zeros are kept when they are the decimal part: an
+/// integral double is written `1.0`, and the formatter below turns that digit
+/// into the `.0`.
 ///
 /// The digits come from `ryu`, which resolves the choice between two equally
 /// short spellings of the same double the way CPython's `repr` does. Rust's own
@@ -466,17 +468,18 @@ fn shortest_decimal(value: f64) -> (String, i32) {
         Some((integer, fraction)) => (integer, fraction),
         None => (mantissa, ""),
     };
-    let mut digits = format!("{integer}{fraction}");
-    let mut decimals =
-        i32::try_from(integer.len()).expect("a double's integer part fits") + exponent;
-    while digits.len() > 1 && digits.starts_with('0') {
-        digits.remove(0);
-        decimals -= 1;
-    }
-    while digits.len() > 1 && digits.ends_with('0') {
-        digits.pop();
-    }
-    if digits == "0" {
+    let written = format!("{integer}{fraction}");
+    // Leading zeros are not significant digits; each one moves the decimal
+    // point left. A zero or a value below one is the only source of them.
+    let significant = written.trim_start_matches('0');
+    let mut digits = significant.to_string();
+    let mut decimals = i32::try_from(integer.len()).expect("a double's integer part fits")
+        + exponent
+        - i32::try_from(written.len() - significant.len()).expect("a double's digits fit");
+    // Zero has no significant digit of its own: write the one that is there and
+    // put the decimal point after it.
+    if digits.is_empty() {
+        digits.push('0');
         decimals = 1;
     }
     if negative {
