@@ -391,9 +391,18 @@
       "sha256": "197fd9e45fc917e74559aaa51edffbe7c4d914e7167c0e9f87a1e1f9b324fca0"
     }
   ],
+  "accepts": [
+    {
+      "name": "literal-spellings-that-are-their-value",
+      "digests": "snapshot",
+      "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"f.trailing_zero\",\"value\":0.10},{\"key\":\"f.tiny\",\"value\":1e-05},{\"key\":\"f.upper_exponent\",\"value\":1E5}],\"capabilities\":[],\"constraints\":[]}",
+      "sha256": "e1ed67f4ef7f1d10960fd1f682ab1e7bd93f78b1b4cc70c596e45e36d9d271db"
+    }
+  ],
   "rejections": [
     {
       "name": "integer-above-u64",
+      "expect": "refusal",
       "digests": "snapshot",
       "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"big\",\"value\":18446744073709551616}],\"capabilities\":[],\"constraints\":[]}",
       "reason": "number-out-of-domain",
@@ -401,6 +410,7 @@
     },
     {
       "name": "integer-below-i64",
+      "expect": "refusal",
       "digests": "snapshot",
       "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"small\",\"value\":-9223372036854775809}],\"capabilities\":[],\"constraints\":[]}",
       "reason": "number-out-of-domain",
@@ -408,6 +418,7 @@
     },
     {
       "name": "intent-integer-above-u64",
+      "expect": "refusal",
       "digests": "intent",
       "document": "{\"schema_version\":1,\"intent_id\":\"intent:big\",\"capability\":\"demo.verify\",\"target\":{\"type\":\"task\",\"id\":\"t1\"},\"arguments\":{\"limit\":18446744073709551616},\"requested_by\":{\"provider\":\"rules.v1\",\"decision_id\":\"proposal-1\"}}",
       "reason": "number-out-of-domain",
@@ -415,10 +426,59 @@
     },
     {
       "name": "non-finite-literal",
+      "expect": "refusal",
       "digests": "snapshot",
       "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"nan\",\"value\":NaN}],\"capabilities\":[],\"constraints\":[]}",
       "reason": "non-finite",
-      "path": null
+      "path": "$.facts[0].value"
+    },
+    {
+      "name": "non-finite-infinity",
+      "expect": "refusal",
+      "digests": "snapshot",
+      "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"infinity\",\"value\":Infinity}],\"capabilities\":[],\"constraints\":[]}",
+      "reason": "non-finite",
+      "path": "$.facts[0].value"
+    },
+    {
+      "name": "non-finite-negative-infinity",
+      "expect": "refusal",
+      "digests": "snapshot",
+      "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"neg_infinity\",\"value\":-Infinity}],\"capabilities\":[],\"constraints\":[]}",
+      "reason": "non-finite",
+      "path": "$.facts[0].value"
+    },
+    {
+      "name": "literal-overflows-to-infinity",
+      "expect": "refusal",
+      "digests": "snapshot",
+      "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"overflow\",\"value\":1e400}],\"capabilities\":[],\"constraints\":[]}",
+      "reason": "non-finite",
+      "path": "$.facts[0].value"
+    },
+    {
+      "name": "literal-overflows-to-negative-infinity",
+      "expect": "refusal",
+      "digests": "snapshot",
+      "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"overflow\",\"value\":-1e400}],\"capabilities\":[],\"constraints\":[]}",
+      "reason": "non-finite",
+      "path": "$.facts[0].value"
+    },
+    {
+      "name": "literal-would-round",
+      "expect": "refusal",
+      "digests": "snapshot",
+      "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"rounded\",\"value\":0.1000000000000000055511151}],\"capabilities\":[],\"constraints\":[]}",
+      "reason": "number-would-round",
+      "path": "$.facts[0].value"
+    },
+    {
+      "name": "literal-would-round-integral",
+      "expect": "refusal",
+      "digests": "snapshot",
+      "document": "{\"schema_version\":1,\"snapshot_id\":\"snap-1\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"domain\":\"software\",\"subject\":{\"type\":\"task\",\"id\":\"t1\"},\"facts\":[{\"key\":\"rounded\",\"value\":9007199254740993.0}],\"capabilities\":[],\"constraints\":[]}",
+      "reason": "number-would-round",
+      "path": "$.facts[0].value"
     }
   ]
 }

@@ -82,15 +82,30 @@ naming the offending field, never hashed as the nearest representable value:
 | --- | --- |
 | an integer below −2^63 or above 2^64−1 | one parser keeps it exact, another rounds it to a double; the two sides would digest different payloads, and the digest would look valid |
 | a non-finite number (`NaN`, `Infinity`, a literal that overflows to infinity) | it has no canonical JSON form |
+| a number literal that only *rounds* to its double | the text was written with digits the value cannot hold, so a consumer holding the same text cannot tell which digits mattered |
 | a value that cannot be written back exactly | the writer would be inventing bytes |
 
-Both implementations therefore enforce the domain *before* hashing, and the
-Rust ingress enforces the integer range on the **document text** (a scan that
-names the JSON path, e.g. `$.facts[0].value`), because a parser that has already
-rounded the literal has lost the information. Non-finite numbers cannot exist in
-a parsed payload at all: the JSON parser refuses an overflowing literal, and
-`serde_json`'s value type cannot hold `NaN`. A producer that needs a number
-outside the domain encodes it as a string.
+**A number literal is in the contract only if it is exactly the value it
+denotes.** The literal must equal, as a number, the shortest round-trip form of
+the double it parses to: `0.10`, `1e-05` and `1E5` are their values and pass,
+while a literal with more significant digits than the double holds only *rounds*
+— 25 significant digits for a value that needs 17 — and is refused with a reason
+of its own, `number-would-round`. The comparison is numeric, not textual, so a
+spelling that denotes the same value is never a refusal, and a rounded value is
+never accepted as a substitute for the number that was written. A literal that
+overflows to infinity is `non-finite`, not a rounding case.
+
+Both implementations therefore enforce the domain *before* hashing. Three
+things can only be judged on the **document text**: an integer a parser cannot
+hold, a literal that only rounds, and the `NaN`, `Infinity` and `-Infinity`
+spellings, which a permissive parser accepts as numbers. So each ingress judges
+the text before a value exists — Rust scans it, Python parses it with hooks that
+refuse a literal — and reports the JSON path of the offending number (e.g.
+`$.facts[0].value`), rather than handing the document to a parser whose dialect
+is wider than ours. Once a document is parsed, the digest writer still refuses
+an out-of-domain integer or a non-finite float it is handed; what it can no
+longer judge is a literal's spelling, which only the text had. A producer that
+needs a number outside the domain encodes it as a string.
 
 Duplicate object keys are also outside the protocol: the canonical form is
 defined over the **parsed** object, and parsers disagree about which duplicate
@@ -126,7 +141,36 @@ re-serializing it changes nothing.
 
 ---
 
-## 2. Pseudocode
+## 2. What a consumer must do, and must not do
+
+The digested cases are the easy half. Reproducing them proves a consumer can
+compute the digest; what protects a binding is that it **refuses** exactly where
+this protocol refuses — a value produced where we produce a refusal makes an
+unverified proposal look validated. A conforming consumer:
+
+- **must** refuse every number outside the domain — an integer outside
+  −2^63 … 2^64−1, a non-finite value, a literal that only rounds to its double —
+  **at the text ingress**, and the values it can still judge **in the digest
+  writer**, with a typed error naming the rule and the JSON path (e.g.
+  `number-would-round at $.arguments.limit`), and **must not** rely on a
+  permissive parser to do it: Python's `json.loads` accepts `NaN`, `Infinity`
+  and `-Infinity` unless `parse_constant` refuses them, and this protocol's
+  numbers are JSON numbers, not that dialect;
+- **must not** hash a value it had to round, reject or spell itself: no `%g`, no
+  `float.hex`, no re-rendering a `Decimal`. The digits come from the language's
+  shortest round-trip form, which the vectors pin, because a formatter that
+  merely round-trips can still pick a different spelling of the same double;
+- **must** fail closed on an unknown `schema_version` and on **every case the
+  vectors mark as a refusal** — a refusal is an answer, not a gap to fill with
+  the nearest representable value;
+- **must** assert `contracts/digest-vectors.json` **including its `accepts` and
+  `rejections`**: passing the digested cases alone is not conformance, and an
+  implementation that digests what the protocol refuses passes the easy half and
+  fails the half that protects a binding.
+
+---
+
+## 3. Pseudocode
 
 A stranger can implement this in twenty lines:
 
@@ -137,6 +181,26 @@ def digest(payload):
     check_domain(payload, "$")          # refuse, naming the field: see §1
     text = canonical(payload)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+def parse_document(document):       # the ingress: the literal rule of §1, see §2
+    refused = []
+    def refuse(literal, reason):    # a marker, so the path can still be named
+        refused.append(Refused(literal, reason))    # after the parser is done
+        return refused[-1]
+    payload = json.loads(
+        document,
+        parse_constant=lambda text: refuse(text, "non-finite"),
+        parse_int=lambda text: check_integer(int(text), text, refuse),
+        parse_float=lambda text: check_literal(float(text), text, refuse),
+    )
+    raise_if_refused(payload, refused)   # DomainError(reason, path of the marker)
+    return payload
+
+def check_literal(value, literal, refuse):   # the same value, or it would round
+    if not isfinite(value):              return refuse(literal, "non-finite")
+    if Decimal(literal) != Decimal(repr(value)):
+        return refuse(literal, "number-would-round")
+    return value
 
 def canonical(value):
     if value is None:            return "null"
@@ -160,7 +224,7 @@ the vectors in `contracts/digest-vectors.json` were computed with it and
 
 ---
 
-## 3. Versioning
+## 4. Versioning
 
 `schema_version` of this protocol is **1** (`contracts/digest-vectors.json`
 carries it; Rust exposes `ictus_core::DIGEST_SCHEMA_VERSION`, Python
@@ -168,7 +232,9 @@ carries it; Rust exposes `ictus_core::DIGEST_SCHEMA_VERSION`, Python
 
 - Any change to the **algorithm**, to the **digested field set** of a subject,
   or to the **vectors** requires a new `schema_version`. A changed algorithm is
-  a new protocol, not an edit.
+  a new protocol, not an edit. Adding a case that pins a refusal or an
+  acceptance which no version-1 digest moves is not one: the number domain, the
+  canonical form and every published digest stay where they are.
 - A consumer **pins the version** it implements and **fails closed** on an
   unknown one: it asserts its vectors for exactly that version and refuses to
   compute or accept a digest of a version it does not implement.
@@ -179,7 +245,7 @@ carries it; Rust exposes `ictus_core::DIGEST_SCHEMA_VERSION`, Python
 
 ---
 
-## 4. The failure mode this prevents
+## 5. The failure mode this prevents
 
 The same digest used to be implemented with three different bodies. Measured
 before v1 was published:
@@ -208,7 +274,10 @@ implementation. It also fixes the number parsing that made the same literal a
 different double on each side: `serde_json` is built with `float_roundtrip`
 workspace-wide, so a literal such as `9007199254740993.0` parses to the same
 double in Rust and in CPython. That feature also affects literal parsing
-elsewhere in the workspace — every float literal is now correctly rounded.
+elsewhere in the workspace — every float literal is now correctly rounded. It is
+agreement on the *parsed* value, not a licence for the text: that literal does
+not denote the double it parses to, so the ingress refuses it (§1) instead of
+digesting an approximation of it.
 
 ### What changed when v1 was published
 
@@ -236,18 +305,32 @@ so a reader of our history can see it rather than discover it:
 
 ---
 
-## 5. Conformance
+## 6. Conformance
 
 `contracts/digest-vectors.json` (schema `contracts/digest-vectors.schema.json`)
-is the artefact to pin. Each case names a `subject` and carries the exact
-`payload` and the expected lowercase hex `sha256`; each rejection case carries
-the raw `document`, the `reason` (`number-out-of-domain`, `non-finite`) and the
-`path` the error must name, when it can be named.
+is the artefact to pin, and **all of it** is asserted, not just the digests:
+
+- `cases` — the digested ones. Each names a `digests` subject and carries the
+  exact `payload` and the expected lowercase hex `sha256`.
+- `accepts` — documents the ingress **must let through**. Each carries the raw
+  `document` and the `sha256` the payload parsed from it must digest to, so a
+  guard that refuses a legitimate spelling (`0.10`, `1e-05`) is caught as
+  loudly as one that accepts what the protocol refuses.
+- `rejections` — documents the ingress **must refuse**. Each carries `expect:
+  "refusal"`, the raw `document`, the `reason` that must be reported
+  (`number-out-of-domain`, `non-finite`, `number-would-round`) and the `path` the
+  error must name. Asserting that *something* failed is not conformance: the
+  rule and the path are part of the case, because they are what tells a
+  consumer's operator which number to fix.
+
+A `payload` is an object and a `document` is text, and only the text is judged
+by the literal rule: how this file happens to spell a number inside a `payload`
+is not a spelling any implementation has to accept.
 
 | | Asserts |
 | --- | --- |
-| `crates/core/tests/digest_vectors.rs` | every snapshot case through `StateSnapshot::content_digest`, every proposal case through `ictus_core::digest::proposal_digest`, every intent case through the canonical writer, every rejection through `check_number_domain`; and that each payload is the contract's serialized form |
-| `tests/python/test_digest_vectors.py` | every case through `ictus_dagster.submission.intent_digest`, every rejection through the domain check, the file against its JSON Schema, and the example envelope ↔ proposal bindings |
+| `crates/core/tests/digest_vectors.rs` | every snapshot case through `StateSnapshot::content_digest`, every proposal case through `ictus_core::digest::proposal_digest`, every intent case through the canonical writer, every acceptance through `check_number_domain` and the writer, every rejection through `check_number_domain` with the file's `reason` and `path`; and that each payload is the contract's serialized form |
+| `tests/python/test_digest_vectors.py` | every case through `ictus_dagster.submission.intent_digest`, every acceptance and rejection through `parse_digestable_document` with the file's `reason` and `path`, the file against its JSON Schema, and the example envelope ↔ proposal bindings |
 
 The vector set covers: key ordering (including non-alphabetical insertion order
 for all three subjects, and code-point ordering against UTF-16 ordering),
@@ -256,7 +339,11 @@ nesting, non-ASCII and astral strings, escapes and control characters
 (including `9007199254740993.0`, `0.00001`, `5e-324`, `1.7976931348623157e308`),
 the shortest-spelling tie (`-847472097840887.2`), `null`/`true`/`false`, empty
 object and empty array, and duplicate-looking keys (case-differing,
-case-fold-equal, NFC versus NFD).
+case-fold-equal, NFC versus NFD). On the ingress side it covers both domain
+edges as integers, the overflow of a literal to infinity in both directions, the
+`NaN`/`Infinity`/`-Infinity` spellings, and a literal that only rounds — for a
+value with a bare double and for an integral one — beside a document whose
+`0.10`, `1e-05` and `1E5` spellings must be accepted.
 
 Beyond the published cases, `crates/core/src/digest.rs` also compares its
 formatter against CPython's `repr` for a generated corpus of 240 doubles

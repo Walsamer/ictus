@@ -96,7 +96,8 @@ fn read_stdin() -> Result<String, String> {
 }
 
 /// Read stdin and refuse a document carrying a number the identity-digest
-/// protocol cannot represent exactly.
+/// protocol cannot represent exactly: an integer outside the domain, a
+/// non-finite number, or a literal that only rounds to its double.
 ///
 /// The snapshot digest is computed over this document
 /// (`docs/IDENTITY_DIGEST.md`), so the number domain has to be enforced on the

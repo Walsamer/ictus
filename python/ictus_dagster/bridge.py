@@ -25,9 +25,11 @@ from ictus_dagster.adapters.intent_config import UnsupportedCapability
 from ictus_dagster.adapters.result_mapping import execution_result_from_run
 from ictus_dagster.adapters.workflow_registry import resolve_workflow
 from ictus_dagster.submission import (
+    DigestDomainError,
     SubmissionError,
     cancel_receipt,
     failed_step_from_run,
+    parse_digestable_document,
     query_receipt,
     seam_evidence_from_run,
     submit_intent,
@@ -109,7 +111,9 @@ def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     raw = sys.stdin.read()
     try:
-        payload = json.loads(raw)
+        # Every command takes a document that is digested, so the number domain
+        # is enforced once, on the text, before a parser can round a literal.
+        payload = parse_digestable_document(raw)
         if argv == ["submit"]:
             result = submit_intent(payload)
         elif argv == ["query"]:
@@ -125,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
             result = execute_intent(payload)
     except (
         ContractError,
+        DigestDomainError,
         UnsupportedCapability,
         SubmissionError,
         json.JSONDecodeError,

@@ -236,6 +236,27 @@ fn submit_refuses_an_integer_the_digest_protocol_cannot_represent() {
 }
 
 #[test]
+fn submit_refuses_a_literal_that_only_rounds() {
+    // Valid JSON that a permissive parser accepts by rounding it to the nearest
+    // double. Forwarding it would bind the identity to a digest of a number the
+    // text does not denote, so the guard refuses it and names the field
+    // (docs/IDENTITY_DIGEST.md).
+    let intent = r#"{"schema_version":1,"intent_id":"intent:rounding","capability":"demo.verify","target":{"type":"task","id":"t1"},"arguments":{"limit":0.1000000000000000055511151},"requested_by":{"provider":"rules.v1","decision_id":"p1"}}"#;
+    let out = run(&["submit"], intent, &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("$.arguments.limit"),
+        "stderr must name the field: {stderr}"
+    );
+    assert!(
+        stderr.contains("does not denote the value it parses to"),
+        "stderr must name the rule: {stderr}"
+    );
+}
+
+#[test]
 fn decide_data_quality_capability_is_allowed() {
     // The second (non-software) domain goes through the same core.
     let out = run(

@@ -18,6 +18,11 @@
 //! is refused with a typed error naming its JSON path rather than being hashed
 //! as the nearest representable value, and a number the writer cannot write back
 //! exactly is refused instead of being written approximately.
+//!
+//! A number *literal* is held to the same standard at the ingress, because a
+//! parser has already lost the spelling: the text must denote exactly the value
+//! it parses to (`0.10` and `0.1` are the same value and both pass; a literal
+//! that only rounds is refused as `number-would-round`).
 
 use serde_json::{Number, Value};
 
@@ -51,6 +56,10 @@ pub enum DigestError {
     NumberOutOfDomain { path: String, literal: String },
     /// A number that is not finite. It has no canonical JSON form.
     NonFinite { path: String, literal: String },
+    /// A number literal that only *rounds* to its double: it is spelled with
+    /// digits the parsed value cannot hold, so a consumer holding the same text
+    /// would have to guess whether the trailing digits mattered.
+    NumberWouldRound { path: String, literal: String },
     /// A value the writer could not write back exactly.
     NotRoundTrippable { path: String, value: String },
     /// A digest schema version this build does not implement.
@@ -63,6 +72,7 @@ impl DigestError {
         match self {
             DigestError::NumberOutOfDomain { path, .. }
             | DigestError::NonFinite { path, .. }
+            | DigestError::NumberWouldRound { path, .. }
             | DigestError::NotRoundTrippable { path, .. } => path,
             DigestError::UnsupportedSchemaVersion { .. } => ROOT_PATH,
         }
@@ -73,6 +83,7 @@ impl DigestError {
         match self {
             DigestError::NumberOutOfDomain { .. } => "number-out-of-domain",
             DigestError::NonFinite { .. } => "non-finite",
+            DigestError::NumberWouldRound { .. } => "number-would-round",
             DigestError::NotRoundTrippable { .. } => "not-round-trippable",
             DigestError::UnsupportedSchemaVersion { .. } => "unsupported-schema-version",
         }
@@ -89,6 +100,10 @@ impl std::fmt::Display for DigestError {
             DigestError::NonFinite { path, literal } => {
                 write!(formatter, "{path}: {literal} is not a finite number")
             }
+            DigestError::NumberWouldRound { path, literal } => write!(
+                formatter,
+                "{path}: number literal {literal} does not denote the value it parses to"
+            ),
             DigestError::NotRoundTrippable { path, value } => {
                 write!(formatter, "{path}: {value} does not round-trip")
             }
@@ -145,9 +160,14 @@ pub fn sha256_hex(input: &[u8]) -> String {
 ///
 /// This is the ingress guard, not a digest: a parser that cannot represent an
 /// integer turns it into the nearest double and the information that it was an
-/// integer is gone, so the refusal has to happen on the document text. The scan
-/// ignores everything inside a string, so a literal that looks like a number in
-/// a message is untouched.
+/// integer is gone, and a literal with more digits than a double holds is the
+/// nearest double rather than the number that was written, so the refusal has to
+/// happen on the document text. The scan ignores everything inside a string, so
+/// a literal that looks like a number in a message is untouched.
+///
+/// Refused here, each naming the JSON path: an integer outside the domain, a
+/// non-finite number (including the `NaN`/`Infinity`/`-Infinity` spellings a
+/// permissive parser accepts), and a literal that only rounds to its double.
 pub fn check_number_domain(document: &str) -> Result<(), DigestError> {
     let bytes = document.as_bytes();
     let mut frames: Vec<Frame> = Vec::new();
@@ -157,6 +177,12 @@ pub fn check_number_domain(document: &str) -> Result<(), DigestError> {
     for (at, byte) in bytes.iter().enumerate() {
         if at < skip_until {
             continue;
+        }
+        if let Some(literal) = non_finite_constant(bytes, at) {
+            return Err(DigestError::NonFinite {
+                path: path_of(&frames),
+                literal: literal.to_string(),
+            });
         }
         match *byte {
             b'"' => {
@@ -290,17 +316,27 @@ fn path_of(frames: &[Frame]) -> String {
 
 fn check_number_token(literal: &str, path: &str) -> Result<(), DigestError> {
     if literal.contains(['.', 'e', 'E']) {
-        let finite = literal
+        let parsed = literal
             .parse::<f64>()
-            .map(|value| value.is_finite())
-            .unwrap_or(false);
-        if finite {
-            return Ok(());
+            .ok()
+            .filter(|value| value.is_finite());
+        let Some(value) = parsed else {
+            return Err(DigestError::NonFinite {
+                path: path.to_string(),
+                literal: literal.to_string(),
+            });
+        };
+        // A literal is in the contract only if it is exactly the value it
+        // denotes. `0.10` and `1E5` do (compared as numbers, not as spellings),
+        // while a literal with more significant digits than the double holds
+        // parses to the nearest double and keeps nothing of the rest.
+        if !number_literals_are_equal(literal, &format_f64(value)) {
+            return Err(DigestError::NumberWouldRound {
+                path: path.to_string(),
+                literal: literal.to_string(),
+            });
         }
-        return Err(DigestError::NonFinite {
-            path: path.to_string(),
-            literal: literal.to_string(),
-        });
+        return Ok(());
     }
     let in_domain = match literal.parse::<i128>() {
         Ok(value) => (INTEGER_MIN..=INTEGER_MAX).contains(&value),
@@ -314,6 +350,66 @@ fn check_number_token(literal: &str, path: &str) -> Result<(), DigestError> {
             literal: literal.to_string(),
         })
     }
+}
+
+/// The non-finite constant spelled at `at`, if one is there.
+///
+/// `NaN`, `Infinity` and `-Infinity` are not JSON numbers, but a permissive
+/// parser accepts them (Python's `json.loads` does, unless `parse_constant`
+/// refuses them), so a document carrying one is refused at the ingress rather
+/// than handed to a parser that may read it as a number.
+fn non_finite_constant(bytes: &[u8], at: usize) -> Option<&'static str> {
+    let rest = &bytes[at..];
+    if rest.starts_with(b"NaN") {
+        Some("NaN")
+    } else if rest.starts_with(b"Infinity") {
+        Some("Infinity")
+    } else if rest.starts_with(b"-Infinity") {
+        Some("-Infinity")
+    } else {
+        None
+    }
+}
+
+/// Whether two JSON number literals denote the same number, compared as values
+/// rather than as strings: `0.10` and `0.1` are equal, `1E5` and `100000.0` are
+/// equal, and `9007199254740993.0` and `9007199254740992.0` are not.
+fn number_literals_are_equal(left: &str, right: &str) -> bool {
+    normalised_number(left) == normalised_number(right)
+}
+
+/// A literal as `(negative, significant digits, exponent)`, with
+/// `value == ±digits * 10^exponent` and the digits carrying no leading or
+/// trailing zeros.
+///
+/// This is an exact decimal reading of the text, so comparing two of them says
+/// whether one literal denotes the value the other one does; no arithmetic is
+/// done on doubles, which is what makes the comparison trustworthy at the edges.
+/// Every spelling of zero normalises to the same value, sign and exponent
+/// included: `-0.0` and `0.000` both denote zero.
+fn normalised_number(literal: &str) -> Option<(bool, String, i64)> {
+    let (negative, rest) = match literal.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, literal),
+    };
+    let (mantissa, exponent) = match rest.split_once(['e', 'E']) {
+        Some((mantissa, exponent)) => (mantissa, Some(exponent)),
+        None => (rest, None),
+    };
+    let (integer, fraction) = match mantissa.split_once('.') {
+        Some((integer, fraction)) => (integer, fraction),
+        None => (mantissa, ""),
+    };
+    let digits = format!("{integer}{fraction}");
+    let significant = digits.trim_start_matches('0');
+    if significant.is_empty() {
+        return Some((false, String::new(), 0));
+    }
+    let digits = significant.trim_end_matches('0');
+    let exponent = exponent.map(str::parse::<i64>).transpose().ok()?;
+    let exponent = exponent.unwrap_or(0) - i64::try_from(fraction.len()).ok()?
+        + i64::try_from(significant.len() - digits.len()).ok()?;
+    Some((negative, digits.to_string(), exponent))
 }
 
 fn write_value(canonical: &mut String, value: &Value, path: &str) -> Result<(), DigestError> {
@@ -527,8 +623,8 @@ fn push_escape(canonical: &mut String, code: u32) {
 mod tests {
     use super::{
         canonical_json, capture_key, check_number_domain, check_schema_version, digest_value,
-        ended_value, format_f64, path_of, verify_roundtrip, DigestError, Frame,
-        DIGEST_SCHEMA_VERSION,
+        ended_value, format_f64, normalised_number, number_literals_are_equal, path_of,
+        verify_roundtrip, DigestError, Frame, DIGEST_SCHEMA_VERSION,
     };
     use serde_json::json;
 
@@ -973,6 +1069,146 @@ mod tests {
         assert!(error
             .to_string()
             .contains("$.a: 1e400 is not a finite number"));
+        // The other direction overflows just as hard.
+        let error = check_number_domain(r#"{"a":-1e400}"#).unwrap_err();
+        assert_eq!(error.reason(), "non-finite");
+        assert_eq!(error.path(), "$.a");
+    }
+
+    #[test]
+    fn a_non_finite_constant_is_refused_by_its_spelling() {
+        // Not JSON numbers, but a permissive parser accepts all three; refusing
+        // them here means a document never reaches one.
+        for (document, literal, path) in [
+            (r#"{"a":NaN}"#, "NaN", "$.a"),
+            (
+                r#"{"facts":[{"value":Infinity}]}"#,
+                "Infinity",
+                "$.facts[0].value",
+            ),
+            (
+                r#"{"facts":[{"value":-Infinity}]}"#,
+                "-Infinity",
+                "$.facts[0].value",
+            ),
+        ] {
+            let error = check_number_domain(document).unwrap_err();
+            assert_eq!(error.reason(), "non-finite", "for {document}");
+            assert_eq!(
+                error,
+                DigestError::NonFinite {
+                    path: path.to_string(),
+                    literal: literal.to_string()
+                },
+                "for {document}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_number_literal_normalises_to_its_digits_and_exponent() {
+        // The value is `±digits * 10^exponent`, so a spelling that adds zeros,
+        // drops the fraction or moves the point lands on the same tuple.
+        for (literal, expected) in [
+            ("0", (false, "", 0)),
+            ("0.000", (false, "", 0)),
+            ("-0.0", (false, "", 0)),
+            ("0e-99999999999999999999", (false, "", 0)),
+            ("1", (false, "1", 0)),
+            ("-1", (true, "1", 0)),
+            ("0.1", (false, "1", -1)),
+            ("0.10", (false, "1", -1)),
+            ("1.5", (false, "15", -1)),
+            ("100.0", (false, "1", 2)),
+            ("1E5", (false, "1", 5)),
+            ("1e-05", (false, "1", -5)),
+            ("0.0001", (false, "1", -4)),
+        ] {
+            let (negative, digits, exponent) = normalised_number(literal).expect(literal);
+            assert_eq!(
+                (negative, digits.as_str(), exponent),
+                expected,
+                "for {literal}"
+            );
+        }
+    }
+
+    #[test]
+    fn two_literals_are_equal_only_when_they_denote_one_value() {
+        for (left, right) in [
+            ("0.10", "0.1"),
+            ("1E5", "100000.0"),
+            ("-0.0", "0.000"),
+            ("0.0001", "1e-04"),
+            ("5e-324", "5e-324"),
+        ] {
+            assert!(number_literals_are_equal(left, right), "{left} vs {right}");
+        }
+        for (left, right) in [
+            ("0.1", "-0.1"),
+            ("1", "10"),
+            ("0.1000000000000000055511151", "0.1"),
+            ("9007199254740993.0", "9007199254740992.0"),
+            ("1e-400", "0.0"),
+            // An exponent no integer type holds cannot be read as a value, so it
+            // is not equal to any literal rather than silently equal to one.
+            ("1e-99999999999999999999", "0.0"),
+        ] {
+            assert!(!number_literals_are_equal(left, right), "{left} vs {right}");
+        }
+    }
+
+    #[test]
+    fn a_literal_that_only_rounds_into_the_domain_is_refused() {
+        // 25 significant digits for a double that holds 17: the text denotes a
+        // number the parser cannot keep, so it is refused rather than digested
+        // as the nearest double a consumer would have to guess.
+        let document = r#"{"facts":[{"key":"rounded","value":0.1000000000000000055511151}]}"#;
+        let error = check_number_domain(document).unwrap_err();
+        assert_eq!(
+            error,
+            DigestError::NumberWouldRound {
+                path: "$.facts[0].value".to_string(),
+                literal: "0.1000000000000000055511151".to_string()
+            }
+        );
+        assert_eq!(error.reason(), "number-would-round");
+        assert_eq!(error.path(), "$.facts[0].value");
+        assert!(error
+            .to_string()
+            .contains("$.facts[0].value: number literal 0.1000000000000000055511151"));
+        // A point in the middle of the digits rounds the same way, and the
+        // parser accepts both documents by rounding them.
+        for document in [
+            r#"{"a":9007199254740993.0}"#,
+            r#"{"a":123456789012345678.0}"#,
+            r#"{"a":1.2345678901234567e-7}"#,
+            r#"{"a":1e-400}"#,
+        ] {
+            assert!(serde_json::from_str::<serde_json::Value>(document).is_ok());
+            let error = check_number_domain(document).unwrap_err();
+            assert_eq!(error.reason(), "number-would-round", "for {document}");
+            assert_eq!(error.path(), "$.a", "for {document}");
+        }
+    }
+
+    #[test]
+    fn a_literal_is_not_refused_for_its_spelling() {
+        // A spelling is only refused when it denotes another number: extra zeros,
+        // a capital exponent and a moved point all keep the value.
+        for document in [
+            r#"{"a":0.10}"#,
+            r#"{"a":1e-05}"#,
+            r#"{"a":1E5}"#,
+            r#"{"a":100.00}"#,
+            r#"{"a":-0.0}"#,
+            r#"{"a":0.0001}"#,
+            r#"{"a":1.7976931348623157e308}"#,
+            r#"{"a":5e-324}"#,
+            r#"["0.1000000000000000055511151"]"#,
+        ] {
+            assert!(check_number_domain(document).is_ok(), "for {document}");
+        }
     }
 
     #[test]

@@ -86,6 +86,12 @@ payload), the number domain and the versioning policy; this file is the
 artefact a consumer pins, so a change to the algorithm, the field set or the
 vectors needs a new `schema_version`.
 
+The file is asserted **whole**, not case by case: the digested `cases`, the
+`accepts` documents an ingress must let through, and the `rejections` it must
+refuse — each with the `reason` it must report and the `path` it must name —
+because an implementation that computes the digests and still digests what the
+protocol refuses fails exactly where a proposal binding is verified.
+
 Three digests cross the boundary and all three use that one algorithm:
 `snapshot.digest` (StateSnapshot content), `validation.proposal_digest`
 (repeated in `intent.policy_context.proposal_digest`) and the submission

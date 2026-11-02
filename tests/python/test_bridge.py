@@ -156,6 +156,22 @@ def test_main_returns_2_on_invalid_json(monkeypatch, capsys) -> None:
     assert "error:" in captured.err
 
 
+def test_main_returns_2_on_a_literal_that_would_round(monkeypatch, capsys) -> None:
+    # Valid JSON that a permissive parser accepts by rounding: the ingress refuses
+    # it on the text, naming the path, before any digest is computed.
+    document = (
+        '{"schema_version":1,"intent_id":"intent:bridge-test",'
+        '"capability":"demo.verify","target":{"type":"task","id":"task-bridge"},'
+        '"arguments":{"limit":0.1000000000000000055511151},'
+        '"requested_by":{"provider":"rules.v1","decision_id":"proposal-bridge"}}'
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO(document))
+    assert bridge.main([]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "number-would-round at $.arguments.limit" in captured.err
+
+
 def test_main_returns_2_on_unsupported_capability(monkeypatch, capsys) -> None:
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(_intent("data.materialize"))))
     assert bridge.main([]) == 2

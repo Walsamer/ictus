@@ -14,6 +14,7 @@ from ictus_dagster.submission import (
     DIGEST_SCHEMA_VERSION,
     DigestDomainError,
     intent_digest,
+    parse_digestable_document,
     require_digest_schema_version,
 )
 from conftest import CONTRACTS_DIR, EXAMPLES_DIR
@@ -43,20 +44,76 @@ def test_published_digest_vector(case: dict[str, Any]) -> None:
     assert intent_digest(case["payload"]) == case["sha256"]
 
 
+@pytest.mark.parametrize("case", VECTORS["accepts"], ids=lambda case: case["name"])
+def test_published_digest_acceptance(case: dict[str, Any]) -> None:
+    # The ingress must let the document through, and what it carries must digest
+    # to the published value: a guard that refuses one of these cuts off text
+    # the protocol carries.
+    payload = parse_digestable_document(case["document"])
+    assert intent_digest(payload) == case["sha256"]
+
+
 @pytest.mark.parametrize(
     "case", VECTORS["rejections"], ids=lambda case: case["name"]
 )
 def test_published_digest_rejection(case: dict[str, Any]) -> None:
-    payload = json.loads(case["document"])
+    # Asserted from the file, not from a copy: the document must be refused with
+    # the rule the file names, at the path it names.
+    assert case["expect"] == "refusal"
     with pytest.raises(DigestDomainError) as caught:
-        intent_digest(payload)
+        parse_digestable_document(case["document"])
     error = caught.value
     assert error.reason == case["reason"]
-    if case["path"] is not None:
-        assert error.path == case["path"]
-    if case["name"] == "non-finite-literal":
-        assert error.path == "$.facts[0].value"
+    assert error.path == case["path"]
     assert error.path in str(error)
+
+
+def test_spelling_is_compared_by_value_not_by_text() -> None:
+    # Extra zeros, a capital exponent and a moved point all denote the value they
+    # parse to, so none of them is a refusal.
+    payload = parse_digestable_document(
+        '{"a":0.10,"b":1e-05,"c":1E5,"d":-0.0,"e":"0.1000000000000000055511151"}'
+    )
+    assert payload == {
+        "a": 0.1,
+        "b": 1e-05,
+        "c": 100000.0,
+        "d": -0.0,
+        "e": "0.1000000000000000055511151",
+    }
+
+
+def test_a_duplicate_key_cannot_hide_a_refused_literal() -> None:
+    # The parsed object keeps the last value, so the marker is gone and the path
+    # cannot be named; the document is still refused rather than accepted.
+    with pytest.raises(DigestDomainError) as caught:
+        parse_digestable_document('{"a":0.1000000000000000055511151,"a":1}')
+    assert caught.value.reason == "number-would-round"
+    assert caught.value.path == "$"
+
+
+@pytest.mark.parametrize(
+    "document,reason,path",
+    [
+        ('{"a":[1,{"b":NaN}]}', "non-finite", "$.a[1].b"),
+        ('{"a":[1,{"b":Infinity}]}', "non-finite", "$.a[1].b"),
+        ('{"a":[1,{"b":-Infinity}]}', "non-finite", "$.a[1].b"),
+        ('{"a":18446744073709551616}', "number-out-of-domain", "$.a"),
+        ('{"a":-9223372036854775809}', "number-out-of-domain", "$.a"),
+        ('{"a":1e400}', "non-finite", "$.a"),
+        ('{"a":-1e400}', "non-finite", "$.a"),
+        ('{"a":0.1000000000000000055511151}', "number-would-round", "$.a"),
+        ('{"a":9007199254740993.0}', "number-would-round", "$.a"),
+    ],
+)
+def test_the_ingress_names_the_rule_and_the_path(
+    document: str, reason: str, path: str
+) -> None:
+    with pytest.raises(DigestDomainError) as caught:
+        parse_digestable_document(document)
+    assert caught.value.reason == reason
+    assert caught.value.path == path
+    assert caught.value.path in str(caught.value)
 
 
 @pytest.mark.parametrize(
