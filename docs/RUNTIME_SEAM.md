@@ -76,6 +76,20 @@ closed too — never open.
   path (`.`, `./`), is rejected. A leading `/` means the absolute namespace;
   nothing names "the workspace root", because Ictus has none.
 
+What the `backend` reference is in the worker, stated plainly: **the Dagster
+worker process gains a run-time import of a module the operator's configuration
+names** — by name, lazily, and only when the seam is configured. A reference
+whose module cannot be imported, that has no such attribute, whose factory
+cannot be constructed, or that yields an object which does not implement the
+port fails the step as a typed `CONFIGURATION` failure, non-retryable. The
+mechanism is `_require_seam`: it catches `SeamConfigError` — raised by
+`resolve_backend`, which wraps each of those four cases — and raises
+`seam_failure(failure_kind="CONFIGURATION")`, carrying the configuration
+error's message in the failure description and suppressing the original
+exception (`from None`), so the step fails on the typed fact rather than on a
+traceback that happens to be in the log. Code:
+[`python/ictus_dagster/seam/runtime.py`](../python/ictus_dagster/seam/runtime.py).
+
 ### The workspace descriptor (the runtime's own file)
 
 Whatever the runtime needs to find itself: an executable, a version token and a
@@ -84,6 +98,23 @@ probe. Ictus does not read, parse or validate it. The runtime's
 (`executable`, `version_token`, `probe{ok, detail}`) and a probe reporting
 `ok: false` fails the attempt closed with `WORKSPACE_PROBE_FAILED`, so a
 version/probe result is never trusted silently.
+
+The descriptor carries **runtime identity only**: a pinned artifact or
+executable, a version token, a probe, and whatever launcher, argv or environment
+detail the runtime needs to start itself. It **must not** carry `write_scope`, a
+wall-clock deadline or a step budget. Those are bounds: they belong to the seam
+configuration, and they reach a backend only through `AttemptRequest`. A
+descriptor that declares them is a second source for a fact that already has an
+owner, and the answer agreed on both sides is to remove that source, not
+reconcile it — neither Ictus nor a consuming control plane has a comparator for
+two bound sets, so they are never compared here and a disagreement is never
+silently resolved.
+
+The Dagster path therefore reads bounds in one place only, the seam
+configuration file, and never from the descriptor or any other file the runtime
+names. An operator tool that runs **outside** Dagster — a standalone rehearsal,
+say — may keep bounds in its own file; those are that tool's own, must be
+labelled as such, and are not a second opinion about a Dagster attempt.
 
 ## The port
 
@@ -214,6 +245,12 @@ each failure kind onto the generic observation vocabulary:
 | `STEP_BUDGET_EXCEEDED` | `RESOURCE_EXHAUSTED` |
 | `WALL_CLOCK_EXCEEDED` | `WORKER_TIMEOUT` |
 | `CANCEL_REQUESTED` | `UNKNOWN` |
+
+`CONFIGURATION` is the kind for whatever Ictus cannot turn into a usable backend
+or a valid attempt: a seam configuration that cannot be read or has drifted from
+version 1, a `backend` reference that cannot be imported, found, constructed or
+held to the port, and a runtime report or evidence document without the required
+shape.
 
 The durable query path reports that typed category instead of guessing one from
 the step name.
