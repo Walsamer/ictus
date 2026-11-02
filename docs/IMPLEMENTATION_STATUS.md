@@ -60,10 +60,14 @@ of printing nothing (ADR 0003). What remains:
   this repository that assert the Rust, Python and Tactus contracts against each
   other.
 - **The runtime and publication capability backends do not exist here.**
-  `software.implement` and `software.promote` are explicit fail-closed routes
-  (`python/ictus_dagster/workflows.toml`,
-  `python/ictus_dagster/jobs/software_agent_job.py`); Tactus issues #22 and #23
-  remain open.
+  `software.implement` and `software.promote` now run the real
+  `prepare -> execute -> verify -> finalize` skeleton
+  (`python/ictus_dagster/jobs/software_agent_job.py`,
+  `software_publish_job.py`) and reach a runtime through the configuration-selected
+  seam port ([`docs/RUNTIME_SEAM.md`](RUNTIME_SEAM.md)); no runtime is shipped
+  here, and with no seam configured both routes keep their typed
+  `INTEGRATION_CONFLICT` placeholder failure. Tactus issues #22 and #23 remain
+  open for their backends.
 
 ## Semantic recovery policy
 

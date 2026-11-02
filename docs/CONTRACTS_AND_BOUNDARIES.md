@@ -385,6 +385,35 @@ Dagster+
 
 The domain core must not care.
 
+### Runtime seam (the software routes' execution backends)
+
+`software.implement` and `software.promote` reach a runtime through
+`python/ictus_dagster/seam/`, whose contracts are
+[`runtime-seam.schema.json`](runtime-seam.schema.json) (version 1) and
+[`runtime-evidence.schema.json`](runtime-evidence.schema.json) (version 1);
+[`RUNTIME_SEAM.md`](RUNTIME_SEAM.md) states the behaviour.
+
+The boundary, precisely:
+
+- **Who chooses the runtime.** The deployment does, through the job resource's
+  `runtime_seam` path (a code-location resource default, or the run config that
+  deployment writes). An `ExecutionIntent` cannot choose it: the software routes'
+  settings mappers ignore intent arguments, exactly as they did when the routes
+  were fail-closed placeholders. The reason is that the named document selects a
+  `module:attribute` that runs **inside the Dagster worker**, and an intent is
+  downstream of model-influenced proposals; authority to import code is
+  operator authority.
+- **What crosses into the runtime.** A workspace descriptor *by reference*, the
+  capability label, the write scope and the wall-clock/step budgets. Nothing
+  else about the intent crosses.
+- **What comes back.** One validated evidence document and the runtime's own
+  verification result; Ictus re-checks containment and budgets and reports the
+  facts in `ExecutionResult.evidence` (`runtime_patch`, `runtime_exit`) and in
+  typed failure metadata (`ictus.failure_kind`, `ictus.failure_category`).
+- **What Ictus does not do.** It never opens the workspace or its descriptor,
+  never resolves a path, and never interprets the runtime's failure taxonomy
+  beyond mapping a typed kind onto the generic observation vocabulary.
+
 ---
 
 # 3. State ownership

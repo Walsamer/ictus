@@ -27,7 +27,9 @@ from ictus_dagster.adapters.workflow_registry import resolve_workflow
 from ictus_dagster.submission import (
     SubmissionError,
     cancel_receipt,
+    failed_step_from_run,
     query_receipt,
+    seam_evidence_from_run,
     submit_intent,
 )
 
@@ -78,11 +80,9 @@ def execute_intent(
         )
     finished_at = _now()
 
-    failed_step_keys = result.get_failed_step_keys() or set()
-    failed_step = None
-    if failed_step_keys:
-        first = sorted(str(key) for key in failed_step_keys)[0]
-        failed_step = first
+    failed_step, failure_category = failed_step_from_run(
+        dagster_instance, result.run_id
+    )
 
     evidence = [
         {
@@ -97,9 +97,11 @@ def execute_intent(
         intent_id=payload["intent_id"],
         success=bool(result.success),
         failed_step=failed_step,
+        failure_category=failure_category,
         started_at=started_at,
         finished_at=finished_at,
         evidence=evidence,
+        seam_evidence=seam_evidence_from_run(dagster_instance, result.run_id),
     )
 
 

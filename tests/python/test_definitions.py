@@ -54,8 +54,18 @@ def test_system_diagnostic_job_graph() -> None:
     }
 
 
-def test_software_placeholder_job_graphs() -> None:
+def test_software_job_graphs_are_the_seam_step_skeleton() -> None:
     agent = next(j for j in defs.jobs if j.name == "software_agent_job")
     publish = next(j for j in defs.jobs if j.name == "software_publish_job")
-    assert set(agent.graph.node_dict) == {"software_agent_placeholder_op"}
-    assert set(publish.graph.node_dict) == {"software_publish_placeholder_op"}
+    assert set(agent.graph.node_dict) == {
+        "software_agent_prepare_op",
+        "software_agent_execute_op",
+        "software_agent_verify_op",
+        "software_agent_finalize_op",
+    }
+    assert set(publish.graph.node_dict) == {
+        "software_publish_prepare_op",
+        "software_publish_execute_op",
+        "software_publish_verify_op",
+        "software_publish_finalize_op",
+    }

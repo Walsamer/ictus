@@ -86,16 +86,19 @@ def diagnostic_settings(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 def software_agent_settings(arguments: dict[str, Any]) -> dict[str, Any]:
-    """Settings for the fail-closed ``software.implement`` placeholder.
+    """Settings for the ``software.implement`` route.
 
-    Arguments are deliberately ignored.  A placeholder must not accept input
-    that could be mistaken for a real implementation request.
+    Arguments are deliberately ignored, exactly as before the seam existed: an
+    implementation route's *runtime* is deployment configuration (the code
+    location's resource default, which is also what names the seam config
+    file), never data an intent can choose.  Without that configuration the job
+    fails closed.
     """
     return {"capability": "software.implement", "placeholder": True}
 
 
 def software_publish_settings(arguments: dict[str, Any]) -> dict[str, Any]:
-    """Settings for the fail-closed ``software.promote`` placeholder.
+    """Settings for the ``software.promote`` route.
 
     Arguments are deliberately ignored, for the same reason as
     :func:`software_agent_settings`.

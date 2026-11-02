@@ -25,8 +25,11 @@ job = "capability_execution_job"
 resource = "settings"
 settings = "capability"
 
-# Fail-closed software routes.  These expose explicit workflow names, but the
-# jobs are placeholders that always fail closed; they never report success.
+# Software routes: prepare -> execute -> verify -> finalize, like the capability
+# workflow, but with a runtime that is named in operator-owned configuration
+# (`contracts/runtime-seam.schema.json`) and reached through a narrow port.  With
+# no seam configured they fail closed with the same typed INTEGRATION_CONFLICT
+# failure the placeholders always raised; they never report success unconfigured.
 [[workflow]]
 capability = "software.implement"
 job = "software_agent_job"

@@ -53,6 +53,7 @@ from typing import Any, Iterator
 from dagster import DagsterInstance, RunsFilter, reconstructable
 
 from ictus_dagster.adapters.contracts import (
+    OBSERVATION_CATEGORIES,
     validate_execution_status,
     validate_intent,
     validate_receipt,
@@ -413,12 +414,15 @@ def submit_intent(
         return _receipt(_reload(dagster_instance, run), digest)
 
 
-def _failed_step(instance: DagsterInstance, run_id: str) -> tuple[str | None, str | None]:
-    """Extract raw failure facts without assigning policy meaning to them."""
+def _run_events(instance: DagsterInstance, run_id: str) -> list[Any]:
+    """A run's recorded events, or none when the instance cannot supply them."""
     try:
-        events = instance.all_logs(run_id)
+        return instance.all_logs(run_id)
     except Exception:  # pragma: no cover - unavailable event storage is evidence itself
-        return None, None
+        return []
+
+
+def _failed_step_from_events(events: list[Any]) -> tuple[str | None, str | None]:
     for event_record in events:
         event = getattr(event_record, "dagster_event", None)
         if getattr(event, "event_type_value", None) != "STEP_FAILURE":
@@ -427,8 +431,73 @@ def _failed_step(instance: DagsterInstance, run_id: str) -> tuple[str | None, st
         class_name = str(getattr(error, "cls_name", ""))
         if "Timeout" in class_name:
             return getattr(event, "step_key", None), "WORKER_TIMEOUT"
-        return getattr(event, "step_key", None), None
+        return getattr(event, "step_key", None), _reported_failure_category(event)
     return None, None
+
+
+def failed_step_from_run(
+    instance: DagsterInstance, run_id: str
+) -> tuple[str | None, str | None]:
+    """Report a run's failed step and the typed category that step reported.
+
+    Raw failure facts only: the step key Dagster failed, and the
+    ``ictus.failure_category`` that step put on its ``Failure`` (the runtime seam
+    classifies its own failures).  A step that reported nothing usable yields
+    ``None`` for the category, which lets the caller fall back to its generic
+    per-step default instead of inventing a cause.
+    """
+    return _failed_step_from_events(_run_events(instance, run_id))
+
+
+def _reported_failure_category(event: Any) -> str | None:
+    """The typed category a step reported, when it reported a known one.
+
+    A step that classifies its own failure (the runtime seam does) knows better
+    than the generic per-step default, so its ``ictus.failure_category`` is
+    reported verbatim.  An unknown or malformed value falls back to the
+    per-step category instead of inventing one.
+    """
+    failure = getattr(event.event_specific_data, "user_failure_data", None)
+    metadata = getattr(failure, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    reported = getattr(metadata.get("ictus.failure_category"), "text", None)
+    if reported in OBSERVATION_CATEGORIES:
+        return reported
+    return None
+
+
+#: Step metadata key the runtime seam's finalize step records its summary under.
+SEAM_EVIDENCE_KEY = "ictus.seam_evidence"
+
+
+def _seam_evidence_from_events(events: list[Any]) -> dict[str, Any] | None:
+    for event_record in events:
+        event = getattr(event_record, "dagster_event", None)
+        metadata = getattr(
+            getattr(event, "event_specific_data", None), "metadata", None
+        )
+        if not isinstance(metadata, dict):
+            continue
+        recorded = metadata.get(SEAM_EVIDENCE_KEY)
+        payload = getattr(recorded, "value", None)
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
+def seam_evidence_from_run(
+    instance: DagsterInstance, run_id: str
+) -> dict[str, Any] | None:
+    """Read the runtime seam's evidence document from a run's step record.
+
+    The seam's finalize step records the structured summary (changed paths,
+    patch digest and size, exit/termination status) as step metadata, so what
+    the runtime reported survives the run instead of living in a log tail.
+    Returns ``None`` when the run carried no seam (the fail-closed routes) or
+    when no event storage is available.
+    """
+    return _seam_evidence_from_events(_run_events(instance, run_id))
 
 
 def _receipt_id(receipt: dict[str, Any] | str) -> str:
@@ -481,7 +550,9 @@ def _status_envelope(
     }
     status_name = _status_name(run)
     if status_name in TERMINAL_RUN_STATUSES:
-        failed_step, failure_category = _failed_step(instance, run.run_id)
+        # One event-log read supplies both facts the result needs.
+        events = _run_events(instance, run.run_id)
+        failed_step, failure_category = _failed_step_from_events(events)
         started_at, finished_at = _run_record_times(instance, run)
         response["state"] = "terminal"
         response["result"] = execution_result_from_run(
@@ -497,6 +568,7 @@ def _status_envelope(
                 {"kind": "dagster_run", "uri": f"dagster://runs/{run.run_id}"},
                 {"kind": "dagster_event_log", "uri": f"dagster://runs/{run.run_id}/events"},
             ],
+            seam_evidence=_seam_evidence_from_events(events),
         )
     if cancellation is not None:
         response["cancellation"] = cancellation
