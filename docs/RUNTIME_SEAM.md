@@ -152,6 +152,17 @@ facts are recorded as the finalize step's evidence and restated in the
 and `runtime_exit` (outcome, exit code/signal, termination confirmation, steps,
 duration) — not as a log tail.
 
+## Serving these routes from another code location
+
+A control plane that serves `software.implement` / `software.promote` from its
+own Dagster code location registers **these jobs** — importing
+`ictus_dagster.jobs.software_agent_job` / `software_publish_job` — and
+configures the seam through the job's resource. It does not substitute a graph
+of its own under the same job name: Dagster pins the recording location's step
+keys on the run, so a location whose graph differs cannot execute that run
+record at all. That is exactly why the skeleton has to exist here, and why a
+configured backend is the only extension point.
+
 ## Failure facts a control plane reads
 
 Every failure is a Dagster `Failure` with `allow_retries=False` and typed
