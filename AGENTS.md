@@ -23,6 +23,10 @@ submission boundary.
   (`prepare -> execute -> verify -> finalize`, configuration-selected backend,
   bounds, process-group termination, evidence), and the unconfigured
   fail-closed default.
+- `docs/IDENTITY_DIGEST.md` — the identity-digest protocol Ictus owns: the
+  canonical form, the digested fields of each subject, the number domain, the
+  versioning policy, and `contracts/digest-vectors.json`, which a consumer
+  implements against independently.
 - `docs/DURABLE_SUBMISSION_REVIEW.md` — acceptance review (criteria 1–3 PASS).
 - `docs/DURABLE_SUBMISSION_VERIFICATION.md` — exact-head verification evidence.
 - `docs/CONTRACTS_AND_BOUNDARIES.md`, `docs/DECISIONS.md`.

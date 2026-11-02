@@ -199,6 +199,11 @@ enqueueing is recovered on the next submission.  The supported configuration,
 durability guarantees and limitations are documented in
 [`docs/DURABLE_SUBMISSION.md`](docs/DURABLE_SUBMISSION.md).
 
+The digest behind that identity is a published protocol Ictus owns, not an
+implementation detail: [`docs/IDENTITY_DIGEST.md`](docs/IDENTITY_DIGEST.md)
+defines the canonical form and `contracts/digest-vectors.json` is the artefact a
+consumer such as Tactus implements against independently.
+
 ## Architecture Baseline v1 and status
 
 Read [Ictus scope](docs/architecture/BASELINE_V1.md) and the

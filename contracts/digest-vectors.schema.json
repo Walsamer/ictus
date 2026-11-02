@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ictus.dev/contracts/digest-vectors.schema.json",
+  "title": "IdentityDigestVectors",
+  "description": "The pinned identity-digest protocol vectors (docs/IDENTITY_DIGEST.md). A consumer pins schema_version 1, implements the algorithm independently, and asserts the whole file: the digested `cases`, the `accepts` documents its ingress must let through, and the `rejections` it must refuse with the named rule at the named path. Reproducing the `cases` alone is not conformance. Each sha256 is the lowercase hex SHA-256 of the canonical form of its payload, computed by the reference implementation named in the document. A change to the algorithm, the digested field set or these vectors needs a new schema_version; a consumer fails closed on an unknown one.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "algorithm",
+    "hash",
+    "encoding",
+    "cases",
+    "accepts",
+    "rejections"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "algorithm": { "const": "sorted-keys-compact-ascii-escaped-cpython-number" },
+    "hash": { "const": "sha256" },
+    "encoding": { "const": "lowercase-hex" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    },
+    "accepts": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Documents the ingress must accept: their number literals are spellings the protocol allows, and the payload parsed from the text digests to sha256. A guard that refuses one of these refuses what the protocol carries.",
+      "items": { "$ref": "#/$defs/acceptance" }
+    },
+    "rejections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rejection" }
+    }
+  },
+  "$defs": {
+    "digests": {
+      "type": "string",
+      "enum": ["snapshot", "proposal", "intent"],
+      "description": "Which subject the payload is: StateSnapshot content, DecisionProposal, or ExecutionIntent payload."
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "case": {
+      "type": "object",
+      "required": ["name", "digests", "payload", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "digests": { "$ref": "#/$defs/digests" },
+        "payload": {
+          "description": "The exact object that is digested. For a snapshot or proposal it is the contract's complete serialized form, so a consumer digests the payload it receives without adding, removing or normalizing a field. It is an object, not a document: how this file happens to spell a number inside one is not a spelling the ingress rule judges, which applies to `document` values."
+        },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "required": ["name", "digests", "document", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "digests": { "$ref": "#/$defs/digests" },
+        "document": {
+          "type": "string",
+          "description": "Raw JSON document text the ingress must accept: every number literal in it denotes exactly the value it parses to. The payload parsed from this text must digest to sha256."
+        },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "rejection": {
+      "type": "object",
+      "required": ["name", "expect", "digests", "document", "reason", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "expect": {
+          "const": "refusal",
+          "description": "Machine-readable: this document is never digested."
+        },
+        "digests": { "$ref": "#/$defs/digests" },
+        "document": {
+          "type": "string",
+          "description": "Raw JSON document text, because an out-of-domain, non-finite or only-rounding number cannot be carried in a JSON payload."
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["number-out-of-domain", "non-finite", "number-would-round"],
+          "description": "The rule that must have refused the document: an integer outside the domain, a number with no finite value, or a literal that only rounds to the double it parses to."
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^\\$(\\.[^\\[\\]]+|\\[[0-9]+\\])*$",
+          "description": "JSON path of the refused literal; the refusal must name exactly this path."
+        }
+      }
+    }
+  }
+}

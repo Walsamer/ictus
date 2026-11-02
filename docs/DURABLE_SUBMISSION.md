@@ -139,7 +139,9 @@ reconciled again with `query` before it is terminal.
 One immutable intent maps to **one** Dagster run:
 
 - Submission is keyed by `ictus.intent_id`; the immutable content is bound by
-  `ictus.intent_digest` (SHA-256 of the canonical JSON).
+  `ictus.intent_digest` — the published identity digest of the intent payload
+  (`docs/IDENTITY_DIGEST.md`, `contracts/digest-vectors.json`). A consumer
+  implements that algorithm independently and asserts our vectors.
 - A repeat with the same identity and digest reconciles to the original run and
   returns its original receipt; it never creates a second run.
 - A different digest for the same identity fails closed

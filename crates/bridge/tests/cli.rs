@@ -183,6 +183,80 @@ fn decide_rejects_malformed_snapshot() {
 }
 
 #[test]
+fn decide_refuses_an_integer_the_digest_protocol_cannot_represent() {
+    // A parser cannot hold this integer, so the snapshot digest would silently
+    // cover the nearest double instead of the payload a consumer reads. The
+    // guard refuses the document and names the field (docs/IDENTITY_DIGEST.md).
+    let document = snapshot("WORKER_TIMEOUT", 0, 2, "demo.verify").replace(
+        r#"{"key":"retry.attempt","value":0}"#,
+        r#"{"key":"retry.attempt","value":18446744073709551616}"#,
+    );
+    let out = run(&["decide", "--approve"], &document, &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("$.facts[1].value"),
+        "stderr must name the field: {stderr}"
+    );
+}
+
+#[test]
+fn decide_context_refuses_an_integer_the_digest_protocol_cannot_represent() {
+    let document = INITIAL_CONTEXT.replace(
+        r#"{ "key": "attempts.semantic", "value": 0 }"#,
+        r#"{ "key": "attempts.semantic", "value": 18446744073709551616 }"#,
+    );
+    assert_ne!(document, INITIAL_CONTEXT, "the context fixture changed");
+    let out = run(&["decide", "--context"], &document, &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("$.snapshot.facts[2].value"),
+        "stderr must name the field: {stderr}"
+    );
+}
+
+#[test]
+fn submit_refuses_an_integer_the_digest_protocol_cannot_represent() {
+    // The submission boundary digests this payload to bind the identity, so a
+    // rounded literal would bind a different digest to the same intent
+    // (docs/IDENTITY_DIGEST.md). The guard runs before the payload is parsed or
+    // forwarded, so no backend is configured for this run.
+    let intent = r#"{"schema_version":1,"intent_id":"intent:big","capability":"demo.verify","target":{"type":"task","id":"t1"},"arguments":{"limit":18446744073709551616},"requested_by":{"provider":"rules.v1","decision_id":"p1"}}"#;
+    let out = run(&["submit"], intent, &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("$.arguments.limit"),
+        "stderr must name the field: {stderr}"
+    );
+}
+
+#[test]
+fn submit_refuses_a_literal_that_only_rounds() {
+    // Valid JSON that a permissive parser accepts by rounding it to the nearest
+    // double. Forwarding it would bind the identity to a digest of a number the
+    // text does not denote, so the guard refuses it and names the field
+    // (docs/IDENTITY_DIGEST.md).
+    let intent = r#"{"schema_version":1,"intent_id":"intent:rounding","capability":"demo.verify","target":{"type":"task","id":"t1"},"arguments":{"limit":0.1000000000000000055511151},"requested_by":{"provider":"rules.v1","decision_id":"p1"}}"#;
+    let out = run(&["submit"], intent, &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("$.arguments.limit"),
+        "stderr must name the field: {stderr}"
+    );
+    assert!(
+        stderr.contains("does not denote the value it parses to"),
+        "stderr must name the rule: {stderr}"
+    );
+}
+
+#[test]
 fn decide_data_quality_capability_is_allowed() {
     // The second (non-software) domain goes through the same core.
     let out = run(
@@ -493,7 +567,10 @@ fn decide_context_initial_example_is_executable() {
     assert_eq!(printed.expiry, "2026-10-01T00:15:00Z");
     // The digest is Ictus's own over the snapshot as received, not an input.
     let context: DecisionContext = serde_json::from_str(INITIAL_CONTEXT).unwrap();
-    assert_eq!(printed.snapshot.digest, context.snapshot.content_digest());
+    assert_eq!(
+        printed.snapshot.digest,
+        context.snapshot.content_digest().unwrap()
+    );
     assert_snapshot_digest(&printed);
     let intent = printed
         .intent
@@ -745,7 +822,10 @@ fn decide_context_exhausted_budget_escalates_through_the_envelope() {
     // The same binding an execution envelope carries: the snapshot digest Ictus
     // computed itself and the digest of the proposal it validated.
     let context: DecisionContext = serde_json::from_str(&input).unwrap();
-    assert_eq!(printed.snapshot.digest, context.snapshot.content_digest());
+    assert_eq!(
+        printed.snapshot.digest,
+        context.snapshot.content_digest().unwrap()
+    );
     assert_eq!(printed.snapshot.revision, context.revision);
     assert_eq!(printed.validation.context_id, context.context_id);
     assert_eq!(printed.validation.proposal_digest.len(), 64);

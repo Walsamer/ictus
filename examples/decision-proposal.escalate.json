@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "proposal_id": "proposal:recovery:obs-0002",
+  "decision": "ESCALATE",
+  "subject": { "type": "task", "id": "task-123" },
+  "provider": {
+    "provider_type": "RULES",
+    "provider_id": "rules.v1",
+    "provider_version": "0.1.0"
+  },
+  "reason": "the retry budget is exhausted",
+  "evidence": [],
+  "proposed_at": "2026-10-01T00:05:00Z"
+}

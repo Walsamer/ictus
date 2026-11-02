@@ -44,9 +44,11 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import math
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -71,6 +73,7 @@ DIGEST_TAG = "ictus.intent_digest"
 SUBMISSION_TAG = "ictus.submission_protocol"
 SUBMITTED_AT_TAG = "ictus.submitted_at"
 SUBMISSION_PROTOCOL = "v1"
+DIGEST_SCHEMA_VERSION = 1
 
 #: Name of the Dagster code location (in the daemon's workspace) that owns the
 #: jobs this bridge submits.  Required for durable submission.
@@ -125,10 +128,138 @@ def _iso(timestamp: Any) -> str | None:
     )
 
 
-def intent_digest(payload: dict[str, Any]) -> str:
-    """Return the stable digest used to bind an identity to immutable intent."""
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+class DigestDomainError(ValueError):
+    """A value cannot be reproduced in the identity-digest JSON domain."""
+
+    def __init__(self, path: str, reason: str, literal: str | None = None) -> None:
+        self.path = path
+        self.reason = reason
+        self.literal = literal
+        detail = f"{reason} at {path}"
+        if literal is not None:
+            detail = f"{detail} (literal {literal})"
+        super().__init__(detail)
+
+
+class _RefusedLiteral:
+    """A number literal the ingress refused, kept as a marker so its path can be
+    named after the document has been parsed."""
+
+    __slots__ = ("literal", "reason")
+
+    def __init__(self, literal: str, reason: str) -> None:
+        self.literal = literal
+        self.reason = reason
+
+
+def require_digest_schema_version(schema_version: int) -> None:
+    """Fail closed unless the consumer's digest protocol is supported."""
+    if type(schema_version) is not int or schema_version != DIGEST_SCHEMA_VERSION:
+        raise ValueError(f"unsupported digest schema_version: {schema_version!r}")
+
+
+def _validate_digest_value(value: Any, path: str = "$") -> None:
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return
+    if isinstance(value, int):
+        if not -(2**63) <= value <= 2**64 - 1:
+            raise DigestDomainError(path, "number-out-of-domain")
+    elif isinstance(value, float):
+        if not math.isfinite(value):
+            raise DigestDomainError(path, "non-finite")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_digest_value(item, f"{path}[{index}]")
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise DigestDomainError(path, "unsupported-value")
+            _validate_digest_value(item, f"{path}.{key}")
+    else:
+        raise DigestDomainError(path, "unsupported-value")
+
+
+def intent_digest(payload: Any) -> str:
+    """Return the stable digest, rejecting values outside the shared JSON domain.
+
+    This guard sees a *parsed* payload, so it can still refuse a value the domain
+    cannot carry (an integer outside it, a non-finite float) but not a literal
+    that only rounded to its value. Text therefore enters through
+    :func:`parse_digestable_document`, which applies the literal rule.
+    """
+    _validate_digest_value(payload)
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _find_refused(value: Any, path: str = "$") -> tuple[_RefusedLiteral, str] | None:
+    """The first refused literal in `value`, with the JSON path it sits at."""
+    if isinstance(value, _RefusedLiteral):
+        return value, path
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            found = _find_refused(item, f"{path}[{index}]")
+            if found is not None:
+                return found
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            found = _find_refused(item, f"{path}.{key}")
+            if found is not None:
+                return found
+    return None
+
+
+def parse_digestable_document(document: str) -> Any:
+    """Parse a JSON document for digesting, refusing what the protocol cannot carry.
+
+    A parser has already lost a literal's spelling, so the domain is enforced on
+    the text: an integer outside the domain, a non-finite number (including the
+    ``NaN``, ``Infinity`` and ``-Infinity`` literals ``json.loads`` accepts by
+    default), and a literal that only *rounds* into the domain are all refused
+    with a :class:`DigestDomainError` naming the JSON path. A literal denotes its
+    value exactly when it equals the shortest round-trip form of the double it
+    parses to, compared as numbers: ``0.10`` and ``1e-05`` are their values and
+    pass, while 25 significant digits for a double that holds 17 do not.
+    """
+    refused: list[_RefusedLiteral] = []
+
+    def refuse(literal: str, reason: str) -> _RefusedLiteral:
+        marker = _RefusedLiteral(literal, reason)
+        refused.append(marker)
+        return marker
+
+    def constant(literal: str) -> Any:
+        return refuse(literal, "non-finite")
+
+    def integer(literal: str) -> Any:
+        value = int(literal)
+        if not -(2**63) <= value <= 2**64 - 1:
+            return refuse(literal, "number-out-of-domain")
+        return value
+
+    def number(literal: str) -> Any:
+        value = float(literal)
+        if not math.isfinite(value):
+            return refuse(literal, "non-finite")
+        if Decimal(literal) != Decimal(repr(value)):
+            return refuse(literal, "number-would-round")
+        return value
+
+    payload = json.loads(
+        document, parse_constant=constant, parse_int=integer, parse_float=number
+    )
+    found = _find_refused(payload)
+    if found is not None:
+        marker, path = found
+        raise DigestDomainError(path, marker.reason, marker.literal)
+    if refused:
+        # A duplicate key hid the marker: the parsed object keeps the last value,
+        # so the path cannot be named. The document still carries a literal
+        # outside the domain and is refused as a whole rather than accepted.
+        raise DigestDomainError("$", refused[0].reason, refused[0].literal)
+    return payload
 
 
 def _instance_is_ephemeral(instance: DagsterInstance) -> bool:

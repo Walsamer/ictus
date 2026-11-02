@@ -36,6 +36,8 @@ pub enum PortError {
     Contract(#[from] ictus_core::ContractError),
     #[error("serialization error: {0}")]
     Serialization(String),
+    #[error("digest error: {0}")]
+    Digest(#[from] ictus_core::DigestError),
 }
 
 /// Produces a normalized snapshot from a domain system.

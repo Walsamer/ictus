@@ -95,6 +95,21 @@ fn read_stdin() -> Result<String, String> {
     Ok(buffer)
 }
 
+/// Read stdin and refuse a document carrying a number the identity-digest
+/// protocol cannot represent exactly: an integer outside the domain, a
+/// non-finite number, or a literal that only rounds to its double.
+///
+/// The snapshot digest is computed over this document
+/// (`docs/IDENTITY_DIGEST.md`), so the number domain has to be enforced on the
+/// text: a parser that cannot represent an integer exactly would turn it into
+/// the nearest double and the digest would silently disagree with a consumer
+/// that parsed the same literal as an exact integer.
+fn read_digestable_document() -> Result<String, String> {
+    let raw = read_stdin()?;
+    ictus_core::digest::check_number_domain(&raw).map_err(|error| error.to_string())?;
+    Ok(raw)
+}
+
 #[derive(Debug, Default)]
 struct Flags {
     approve: bool,
@@ -174,7 +189,7 @@ fn approval_provider(flags: &Flags) -> Result<Box<dyn ApprovalProvider>, String>
 }
 
 fn propose_and_evaluate(flags: &Flags) -> Result<(DecisionProposal, PolicyDecision), String> {
-    let raw = read_stdin()?;
+    let raw = read_digestable_document()?;
     let snapshot: StateSnapshot =
         serde_json::from_str(&raw).map_err(|e| format!("invalid StateSnapshot JSON: {e}"))?;
     snapshot.validate().map_err(|e| e.to_string())?;
@@ -351,7 +366,7 @@ fn expiry_after(timestamp: &str, minutes: u64) -> Result<String, String> {
 /// trusted local composition validated. The digest is computed here over the
 /// snapshot exactly as received; no producer-supplied digest is trusted.
 fn run_decide_context(flags: &Flags) -> Result<ExitCode, String> {
-    let raw = read_stdin()?;
+    let raw = read_digestable_document()?;
     let context: DecisionContext =
         serde_json::from_str(&raw).map_err(|e| format!("invalid DecisionContext JSON: {e}"))?;
     let registry = load_registry(flags.capabilities.as_deref())?;
@@ -364,7 +379,10 @@ fn run_decide_context(flags: &Flags) -> Result<ExitCode, String> {
     let snapshot = SnapshotRef::new(
         &context.snapshot.snapshot_id,
         context.revision,
-        context.snapshot.content_digest(),
+        context
+            .snapshot
+            .content_digest()
+            .map_err(|e| e.to_string())?,
     );
     let trusted = LocalPolicyComposition::default()
         .validate(ValidationRequest {
@@ -421,7 +439,11 @@ fn run_execute() -> Result<ExitCode, String> {
 }
 
 fn run_submit() -> Result<ExitCode, String> {
-    let raw = read_stdin()?;
+    // The backend digests this payload to bind the submission identity
+    // (`docs/IDENTITY_DIGEST.md`), so a number it cannot carry exactly has to be
+    // refused here: forwarding the rounded literal would bind a different
+    // digest to the same intent.
+    let raw = read_digestable_document()?;
     let intent: ExecutionIntent =
         serde_json::from_str(&raw).map_err(|e| format!("invalid ExecutionIntent JSON: {e}"))?;
     let receipt = JsonStdioBackend::from_env()

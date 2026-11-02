@@ -27,7 +27,7 @@
   "validation": {
     "capability_version": "not-applicable",
     "context_id": "ctx-recovery-0002",
-    "proposal_digest": "713ca5ab36ccefba79b69d8bfe5971ae618355d28de6653c91a525172dc1314c",
+    "proposal_digest": "9df8d66d65af56098c18a9061783aa95192cbf3c86ab5c09441c1fc5339ee84e",
     "validated_at": "2026-10-01T00:05:00Z"
   }
 }
