@@ -407,3 +407,60 @@ def test_finish_terminates_a_child_the_backend_left_running() -> None:
     _assert_pid_gone(process.pid)
     # Nothing is left to clean up a second time.
     assert control.finish() is None
+
+
+class _StuckChild:
+    """A child that survives both signals: what an unkillable group looks like.
+
+    ``SIGKILL`` cannot be ignored, so this only happens to a process stuck in
+    uninterruptible sleep.  It exercises the two defensive branches around that:
+    the bounded reap and the unconfirmed report.
+    """
+
+    pid = 2**22 + 7  # never used as a real process group: signalling is faked
+
+    def __init__(self) -> None:
+        self.waits = 0
+
+    def poll(self) -> None:
+        return None
+
+    def wait(self, timeout: float | None = None) -> int:
+        import subprocess
+
+        self.waits += 1
+        raise subprocess.TimeoutExpired(cmd="stuck", timeout=timeout or 0)
+
+
+class _FakeSignals(ProcessSupervisor):
+    """A supervisor that records signals instead of sending them."""
+
+    def __init__(self, child: _StuckChild) -> None:
+        super().__init__(grace_seconds=0)
+        self._stuck = child
+        self._children = [child]  # type: ignore[list-item]
+        self.sent: list[int] = []
+
+    def _signal_live_groups(self, signal_number: int) -> None:
+        self.sent.append(signal_number)
+
+
+def test_a_group_that_survives_sigkill_is_reported_unconfirmed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import signal
+
+    from ictus_dagster.seam import process as process_module
+
+    # The kill-confirmation window is what makes this test fast; the behaviour
+    # (bounded reap, unconfirmed report) is the production one.
+    monkeypatch.setattr(process_module, "KILL_CONFIRM_TIMEOUT_SECONDS", 0)
+    child = _StuckChild()
+    supervisor = _FakeSignals(child)
+
+    report = supervisor.terminate("stuck")
+
+    assert report["signals"] == ["SIGTERM", "SIGKILL"]
+    assert supervisor.sent == [signal.SIGTERM, signal.SIGKILL]
+    assert report["confirmed"] is False
+    assert child.waits == 1  # the reap was bounded, not a blocking wait

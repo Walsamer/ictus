@@ -210,22 +210,31 @@ def normalize_scope_path(path: str) -> str:
     return path.rstrip("/")
 
 
+def _escapes(path: str) -> bool:
+    """Whether a path tries to leave the place it names with a ``..`` segment."""
+    return ".." in path.split("/")
+
+
 def out_of_scope(changed_paths: list[str], write_scope: tuple[str, ...]) -> list[str]:
     """Return the changed paths outside the declared write scope.
 
     Containment is deliberately syntactic and default-deny: a changed path is
-    in scope when it equals a scope entry or continues it with ``/``.  Ictus
-    never resolves symlinks, never opens the workspace and never interprets the
-    runtime's view of it; a runtime that reports absolute paths must be given
-    absolute scope entries, and a mismatch fails the attempt closed.  A root
-    entry ``/`` therefore contains absolute paths only, and a relative path
-    needs a relative entry.
+    in scope when it equals a scope entry or continues it with ``/``.  A path
+    with a ``..`` segment is never in scope: Ictus does not resolve paths (no
+    symlink traversal, no workspace access), so it refuses a path whose target
+    it cannot name instead of pretending ``src/../..`` is still ``src``.
+
+    Ictus never opens the workspace and never interprets the runtime's view of
+    it; a runtime that reports absolute paths must be given absolute scope
+    entries, and a mismatch fails the attempt closed.  A root entry ``/``
+    therefore contains absolute paths only, and a relative path needs a
+    relative entry.
     """
     scopes = tuple(normalize_scope_path(scope) for scope in write_scope)
     outside = []
     for changed_path in changed_paths:
         normalized = normalize_scope_path(changed_path)
-        if not any(
+        if _escapes(normalized) or not any(
             normalized == scope or normalized.startswith(f"{scope}/")
             for scope in scopes
         ):

@@ -29,6 +29,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ictus_dagster.seam.evidence import normalize_scope_path
+
 #: Version of the seam configuration document this build accepts.
 SEAM_CONFIG_VERSION = 1
 
@@ -127,6 +129,21 @@ def _require_scope(bounds: dict[str, Any]) -> tuple[str, ...]:
         raise SeamConfigError(
             "bounds.write_scope must be a non-empty list of non-empty paths"
         )
+    if any(".." in entry.split("/") for entry in write_scope):
+        raise SeamConfigError(
+            "bounds.write_scope entries must not contain a '..' segment: the "
+            "scope is compared syntactically and a scope that only means "
+            "something after resolution is refused"
+        )
+    for entry in write_scope:
+        normalized = normalize_scope_path(entry)
+        if normalized == "." or (not normalized and not entry.startswith("/")):
+            raise SeamConfigError(
+                "bounds.write_scope entries must name paths: Ictus has no "
+                "workspace root, so '.', './' and '' cannot be expressed; list "
+                "the paths the attempt may write (a leading '/' means every "
+                "absolute path)"
+            )
     return tuple(write_scope)
 
 

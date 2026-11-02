@@ -85,42 +85,22 @@ def diagnostic_settings(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _runtime_seam(arguments: dict[str, Any]) -> dict[str, Any]:
-    """The optional seam config path an intent names for its deployment.
-
-    Ictus only holds the path: the document it points at is operator-owned and
-    is validated by the seam, never here.  Anything that is not a non-empty
-    string is omitted, which leaves the fail-closed default in place.
-    """
-    value = arguments.get("runtime_seam")
-    if not isinstance(value, str) or not value.strip():
-        return {}
-    return {"runtime_seam": value.strip()}
-
-
 def software_agent_settings(arguments: dict[str, Any]) -> dict[str, Any]:
     """Settings for the ``software.implement`` route.
 
-    No implementation *request* is read from the intent: the route carries the
-    capability, the legacy placeholder marker and, when the deployment names
-    one, the path to its runtime seam configuration.  Without that path the job
-    fails closed exactly as the placeholder always did.
+    Arguments are deliberately ignored, exactly as before the seam existed: an
+    implementation route's *runtime* is deployment configuration (the code
+    location's resource default, which is also what names the seam config
+    file), never data an intent can choose.  Without that configuration the job
+    fails closed.
     """
-    return {
-        "capability": "software.implement",
-        "placeholder": True,
-        **_runtime_seam(arguments),
-    }
+    return {"capability": "software.implement", "placeholder": True}
 
 
 def software_publish_settings(arguments: dict[str, Any]) -> dict[str, Any]:
     """Settings for the ``software.promote`` route.
 
-    Arguments are read the same way as :func:`software_agent_settings`, for the
-    same reason: only the capability and an optional seam config path.
+    Arguments are deliberately ignored, for the same reason as
+    :func:`software_agent_settings`.
     """
-    return {
-        "capability": "software.promote",
-        "placeholder": True,
-        **_runtime_seam(arguments),
-    }
+    return {"capability": "software.promote", "placeholder": True}

@@ -28,20 +28,27 @@ Schemas: [`contracts/runtime-seam.schema.json`](../contracts/runtime-seam.schema
 - Ictus never reads the workspace descriptor. It holds the path and passes it
   through; the runtime reports its version and probe result back.
 - The seam adds no routing, retry or recovery policy: one intent is still one
-  Dagster run, step retries stay inside that attempt, and `capability_validation`,
-  decision and result semantics are untouched.
+  Dagster run, step retries stay inside that attempt, and `capability_validation`
+  and the decision contracts are untouched. The one result-side change is
+  deliberate and narrower: a terminal run reports the typed category its failed
+  step recorded (`ictus.failure_category`) instead of guessing one from the step
+  name.
 
 ## Selecting a runtime
 
-Two configuration surfaces name the seam, and both hold only a **path**:
+The seam is **deployment configuration**, set by the code location that serves
+the job, and it holds only a **path**:
 
 | Surface | Who sets it | Meaning |
 | --- | --- | --- |
-| resource setting `runtime_seam` | the code location's resource default, or `submit_intent`/`bridge.execute_intent` run config derived from the intent argument `runtime_seam` | path to the operator-owned seam configuration |
-| intent argument `runtime_seam` | the submitting control plane | same path, stripped; a non-string or blank value is ignored |
+| resource setting `runtime_seam` | the code location — its resource default, or the run config that deployment writes | path to the operator-owned seam configuration |
+| intent argument `runtime_seam` | **never honoured** | intent data cannot choose a file Ictus imports; the mappers ignore it |
 
-Unset, the seam is closed: `prepare` raises the placeholder failure described
-below. A path that is set but unusable fails closed too — never open.
+Intent arguments are deliberately ignored for these routes, exactly as they were
+before the seam existed: the document names code Ictus imports, so only the
+operator may choose it. Unset, the seam is closed: `prepare` raises the
+placeholder failure described below. A path that is set but unusable fails
+closed too — never open.
 
 ### The seam configuration (version 1)
 
@@ -65,6 +72,9 @@ below. A path that is set but unusable fails closed too — never open.
 - `bounds` — passed to the backend as data and re-checked against the evidence it
   returns: `write_scope` (non-empty, syntactic, default-deny containment),
   `wall_clock_seconds` (`0 < s <= 86400`) and `step_budget` (`0 < n <= 10000`).
+  A scope entry is never resolved: one with a `..` segment, or one that names no
+  path (`.`, `./`), is rejected. A leading `/` means the absolute namespace;
+  nothing names "the workspace root", because Ictus has none.
 
 ### The workspace descriptor (the runtime's own file)
 
@@ -108,13 +118,26 @@ Everything the attempt starts goes through the control:
 confirmation is reported as data:
 
 ```json
-{"requested": true, "reason": "control_plane_request", "signals": ["SIGTERM", "SIGKILL"], "process_groups": [4242], "confirmed": true}
+{"requested": true, "reason": "wall_clock", "signals": ["SIGTERM", "SIGKILL"], "process_groups": [4242], "confirmed": true}
 ```
+
+The `reason` is whatever the halting path passed (`wall_clock`,
+`leftover_process`, `backend_exception`, `attempt_aborted`, or the backend's own
+reason when it cancels itself).
 
 An attempt whose evidence reports `termination.requested && !confirmed` fails
 with `TERMINATION_UNCONFIRMED`: Ictus will not report a stopped writer it could
 not confirm, so a supervisor holding writer exclusion can rely on the flag.
 There is no cooperative-flag path.
+
+What this covers, precisely: every process the attempt starts **through
+`control.spawn`**, stopped when the attempt itself halts (a budget, a
+cancellation, a backend exception, or an interpreter abort — `BaseException`
+still terminates before it propagates). It does not cover a runtime that forks
+outside the control (invisible to the supervisor) or a cancelled *Dagster run*:
+a run-level cancel is Dagster's worker teardown, so a backend must treat its own
+process group as disposable and not rely on Ictus observing it. The confirmed
+flag is only as strong as the backend's use of `control.spawn`.
 
 ### The evidence an attempt returns
 

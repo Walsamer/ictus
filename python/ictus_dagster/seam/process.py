@@ -109,8 +109,17 @@ class ProcessSupervisor:
         return not self.live_groups()
 
     def _reap(self) -> None:
+        """Reap every tracked child, bounded by the kill-confirmation window.
+
+        ``SIGKILL`` cannot be ignored, so this only bounds how long a child that
+        is stuck in uninterruptible sleep can hold the supervisor; the report's
+        ``confirmed`` flag is the authority, never a blocking wait.
+        """
         for process in self._children:
-            process.wait()
+            try:
+                process.wait(timeout=KILL_CONFIRM_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                continue
 
     def terminate(self, reason: str) -> dict[str, Any]:
         """Stop every tracked group and confirm it is gone.

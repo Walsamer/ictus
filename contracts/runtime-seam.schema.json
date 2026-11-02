@@ -24,6 +24,7 @@
         "descriptor": {
           "type": "string",
           "minLength": 1,
+          "pattern": "\\S",
           "description": "Path to the operator-owned workspace descriptor, which declares the runtime's executable, version token and probe. Ictus passes this path through and never opens, parses or validates the file; the runtime reports its version and probe result back as evidence. A relative path resolves against this configuration file's directory."
         }
       }
@@ -37,8 +38,22 @@
         "write_scope": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "minLength": 1 },
-          "description": "Paths the attempt may write. Containment is syntactic and default-deny: a reported changed path is in scope when it equals an entry or continues it with '/'. A changed path outside the scope fails the attempt closed."
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S",
+            "allOf": [
+              {
+                "not": { "pattern": "(^|/)\\.\\.(/|$)" },
+                "description": "No '..' segment: entries are compared syntactically and never resolved."
+              },
+              {
+                "not": { "pattern": "^\\./?$" },
+                "description": "An entry must name a path; '.' and './' have no meaning without a workspace root."
+              }
+            ]
+          },
+          "description": "Paths the attempt may write. Containment is syntactic and default-deny: a reported changed path is in scope when it equals an entry or continues it with '/'. A changed path outside the scope fails the attempt closed. Entries are never resolved, so an entry with a '..' segment, or one that names no path ('.', './', ''), is rejected; a leading '/' means the absolute namespace and no entry names the workspace root, because Ictus has none."
         },
         "wall_clock_seconds": {
           "type": "number",

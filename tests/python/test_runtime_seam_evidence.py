@@ -376,6 +376,13 @@ def test_normalize_scope_path_strips_dot_prefixes_and_trailing_slashes(
         (["src/a.py"], ("/",), ["src/a.py"]),
         # No changed paths means nothing is out of scope.
         ([], ("src",), []),
+        # A ``..`` segment is never in scope: containment is syntactic, so Ictus
+        # refuses a path whose target it cannot name rather than pretending
+        # ``src/../..`` is still ``src``.
+        (["src/../etc/passwd"], ("src",), ["src/../etc/passwd"]),
+        (["../src/a.py"], ("src",), ["../src/a.py"]),
+        ([".."], ("src",), [".."]),
+        (["/repo/src/../../etc/passwd"], ("/repo/src",), ["/repo/src/../../etc/passwd"]),
     ],
 )
 def test_out_of_scope_is_syntactic_and_default_deny(

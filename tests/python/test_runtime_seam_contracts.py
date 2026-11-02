@@ -19,6 +19,8 @@ from jsonschema import Draft202012Validator, ValidationError
 from ictus_dagster.seam.config import (
     BOUNDS_FIELDS,
     CONFIG_FIELDS,
+    MAX_STEP_BUDGET,
+    MAX_WALL_CLOCK_SECONDS,
     SEAM_CONFIG_VERSION,
     SeamConfigError,
     WORKSPACE_FIELDS,
@@ -105,6 +107,15 @@ def test_the_seam_config_schema_matches_the_loader(contracts_dir: Path) -> None:
     assert frozenset(bounds["required"]) == BOUNDS_FIELDS
     assert frozenset(bounds["properties"]) == BOUNDS_FIELDS
     assert bounds["additionalProperties"] is False
+
+
+def test_the_schema_bounds_are_the_loader_bounds(contracts_dir: Path) -> None:
+    """The published bounds are the enforced bounds, not a second opinion."""
+    bounds = _schema(contracts_dir, SEAM_SCHEMA)["properties"]["bounds"]["properties"]
+    assert bounds["wall_clock_seconds"]["maximum"] == MAX_WALL_CLOCK_SECONDS
+    assert bounds["step_budget"]["maximum"] == MAX_STEP_BUDGET
+    assert bounds["wall_clock_seconds"]["exclusiveMinimum"] == 0
+    assert bounds["step_budget"]["exclusiveMinimum"] == 0
 
 
 def test_the_evidence_schema_matches_the_validator(contracts_dir: Path) -> None:
@@ -202,6 +213,25 @@ REJECTED_SEAM_CONFIGS = [
     # loader's integer check both refuse it.
     pytest.param(_seam_config_document(schema_version=True), id="boolean-version"),
     pytest.param(_seam_config_document(schema_version="1"), id="string-version"),
+    pytest.param(
+        _seam_config_document(workspace={"descriptor": "   "}), id="blank-descriptor"
+    ),
+    pytest.param(
+        _seam_config_document(
+            bounds={
+                "write_scope": ["src/../etc"],
+                "wall_clock_seconds": 600,
+                "step_budget": 200,
+            }
+        ),
+        id="escaping-scope",
+    ),
+    pytest.param(
+        _seam_config_document(
+            bounds={"write_scope": ["."], "wall_clock_seconds": 600, "step_budget": 200}
+        ),
+        id="scope-names-no-path",
+    ),
 ]
 
 REJECTED_EVIDENCE = [

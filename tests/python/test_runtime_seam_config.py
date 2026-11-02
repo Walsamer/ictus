@@ -365,6 +365,22 @@ def test_an_unusable_write_scope_fails_closed(write_scope: Any) -> None:
 
 
 @pytest.mark.parametrize(
+    "write_scope",
+    [["src/.."], [".."], ["src/../etc"], ["/repo/../etc"]],
+    ids=["parent-entry", "root-parent", "escape-entry", "absolute-escape"],
+)
+def test_a_write_scope_that_needs_resolution_fails_closed(
+    write_scope: list[str],
+) -> None:
+    # The scope is compared syntactically and never resolved, so an entry that
+    # only means something after resolution is refused instead of silently
+    # matching nothing (or matching something the operator did not name).
+    document = _document(bounds=_bounds(write_scope=write_scope))
+    with pytest.raises(SeamConfigError, match="must not contain a '\.\.' segment"):
+        parse_seam_config(document, source="runtime-seam.json")
+
+
+@pytest.mark.parametrize(
     "seconds",
     [
         True,
@@ -509,3 +525,16 @@ def test_the_published_field_sets_are_the_module_constants() -> None:
     assert WORKSPACE_FIELDS == frozenset({"descriptor"})
     assert BOUNDS_FIELDS == frozenset({"write_scope", "wall_clock_seconds", "step_budget"})
     assert SEAM_CONFIG_VERSION == 1
+
+
+@pytest.mark.parametrize(
+    "write_scope", [["."], ["./"], ["./."]], ids=["dot", "dot-slash", "dot-dot-slash"]
+)
+def test_a_write_scope_that_names_no_path_fails_closed(
+    write_scope: list[str],
+) -> None:
+    # Ictus has no workspace root to expand "." against, so an entry that names
+    # no path is refused instead of silently matching nothing.
+    document = _document(bounds=_bounds(write_scope=write_scope))
+    with pytest.raises(SeamConfigError, match="entries must name paths"):
+        parse_seam_config(document, source="runtime-seam.json")

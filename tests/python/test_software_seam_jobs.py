@@ -20,8 +20,9 @@ The contract this file pins, one clause per group of tests:
   terminated for real (``SIGTERM``, then ``SIGKILL`` for a group that ignores
   ``SIGTERM``), the recorded evidence says so, and the pids are gone.
 * **Misconfiguration.**  A seam that cannot be used fails closed as
-  ``CONFIGURATION`` / ``INTEGRATION_CONFLICT``; an intent that names a nonsense
-  ``runtime_seam`` is ignored and the route stays on its fail-closed default.
+  ``CONFIGURATION`` / ``INTEGRATION_CONFLICT``.  The seam is deployment
+  configuration: an intent that names a seam path -- nonsense or a valid file --
+  changes nothing, and the route stays on its fail-closed default.
 
 The runtime here is ``tests/python/stub_runtime_backend.py``: it is reached only
 through configuration, so nothing in this file weakens the boundary that
@@ -217,7 +218,7 @@ CONFIG_BREAKAGES = [
     ),
 ]
 
-#: Values an intent may put in ``runtime_seam`` that must be ignored.
+#: Values an intent may put in ``runtime_seam`` that must change nothing.
 NON_STRING_SEAMS = [
     pytest.param(None, id="null"),
     pytest.param(42, id="number"),
@@ -318,12 +319,16 @@ def _run(
     seam_config: Path | None = None,
     arguments: dict[str, Any] | None = None,
 ) -> ExecuteInProcessResult:
-    """Run the routed job the way an orchestrating code location would."""
+    """Run the routed job the way a configured code location would.
+
+    The seam is deployment configuration: it arrives as the resource's own
+    ``runtime_seam`` (what a code location sets), never through intent
+    arguments.
+    """
     spec = resolve_workflow(capability)
-    payload = dict(arguments or {})
+    settings = spec.settings_from_arguments(dict(arguments or {}))
     if seam_config is not None:
-        payload["runtime_seam"] = str(seam_config)
-    settings = spec.settings_from_arguments(payload)
+        settings = {**settings, "runtime_seam": str(seam_config)}
     return spec.job.execute_in_process(
         resources={spec.resource_key: spec.resource_cls(**settings)},
         instance=instance,
@@ -331,13 +336,13 @@ def _run(
     )
 
 
-def _intent(capability: str, *, seam_config: Path, intent_id: str) -> dict[str, Any]:
+def _intent(capability: str, *, intent_id: str) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "intent_id": intent_id,
         "capability": capability,
         "target": {"type": "task", "id": "task-seam"},
-        "arguments": {"runtime_seam": str(seam_config)},
+        "arguments": {},
         "requested_by": {"provider": "rules.v1", "decision_id": "decision-seam"},
     }
 
@@ -648,6 +653,26 @@ def test_a_leftover_process_group_is_terminated(
     _assert_pids_gone(termination["process_groups"])
 
 
+def test_an_interpreter_abort_still_terminates_the_process_group(
+    instance: DagsterInstance, seam: Callable[..., Path], tmp_path: Path
+) -> None:
+    """A ``BaseException`` from the backend must not leave a live writer.
+
+    ``KeyboardInterrupt`` is not an ``Exception``: the seam cancels the attempt
+    before letting it propagate, so the process group the backend started is
+    gone and the run records a failure.
+    """
+    config = seam("interrupt")
+    result = _run(instance, IMPLEMENT, seam_config=config)
+    assert result.success is False
+    assert result.get_failed_step_keys() == {f"{_prefix(IMPLEMENT_JOB)}_execute_op"}
+
+    pid_file = tmp_path / "workspace-descriptor.pid"
+    assert pid_file.exists(), "the stub never started its process"
+    pid = int(pid_file.read_text(encoding="utf-8"))
+    _assert_pids_gone([pid])
+
+
 def test_a_process_that_ignores_sigterm_is_killed_after_the_grace() -> None:
     """``SIGTERM`` then ``SIGKILL``, confirmed — exercised at the control level.
 
@@ -729,10 +754,15 @@ def test_a_misconfigured_seam_fails_closed(
 
 
 @pytest.mark.parametrize("value", NON_STRING_SEAMS)
-def test_a_nonsense_runtime_seam_argument_is_ignored(
+def test_an_intent_argument_never_selects_the_seam(
     instance: DagsterInstance, value: Any
 ) -> None:
-    """Only a non-empty string names a seam; anything else keeps the default."""
+    """The seam is deployment configuration; intent data cannot choose it.
+
+    An intent that names a seam path -- nonsense or a real file -- changes
+    nothing: the mapper keeps its legacy shape, and the run stays on the
+    fail-closed default unless the deployment configured the resource.
+    """
     spec = resolve_workflow(IMPLEMENT)
     assert spec.settings_from_arguments({"runtime_seam": value}) == {
         "capability": IMPLEMENT,
@@ -749,6 +779,22 @@ def test_a_nonsense_runtime_seam_argument_is_ignored(
     assert "ictus.failure_kind" not in metadata
 
 
+def test_an_intent_cannot_point_at_a_real_seam_config(
+    instance: DagsterInstance, seam: Callable[..., Path]
+) -> None:
+    """A perfectly valid seam path in an intent is still ignored."""
+    config = seam("success")
+    spec = resolve_workflow(IMPLEMENT)
+    assert spec.settings_from_arguments({"runtime_seam": str(config)}) == {
+        "capability": IMPLEMENT,
+        "placeholder": True,
+    }
+    result = _run(instance, IMPLEMENT, arguments={"runtime_seam": str(config)})
+    assert result.success is False
+    assert result.get_failed_step_keys() == {f"{_prefix(IMPLEMENT_JOB)}_prepare_op"}
+    assert submission.seam_evidence_from_run(instance, result.run_id) is None
+
+
 @pytest.mark.parametrize(
     ("capability", "job_name", "resource_key"),
     [ROUTES[0]],
@@ -760,37 +806,65 @@ def test_durable_submission_carries_the_seam(
     job_name: str,
     resource_key: str,
 ) -> None:
-    """The seam travels in run config and its evidence reaches the receipt.
+    """A submitted intent cannot configure the seam; a deployment still can.
 
-    One route is enough here: both address the same submission path
-    (``_run_config``, ``submit_intent``, ``_status_envelope``), the resource key
-    of each is asserted against the registry in the tests above, and this is
-    the only test that pays for a persistent ``DAGSTER_HOME`` plus a real
-    multiprocess run per route.
+    Two runs on one persistent instance, because the duration of the test would
+    double otherwise and both capabilities address the same submission path:
+
+    * an intent submitted through ``submit_intent`` carries no seam, so its
+      recorded run stays fail-closed even when the intent names a valid seam
+      path in its arguments;
+    * a run recorded by the *deployment* -- the same job, identity tags and
+      resource key, with the seam in its resource config -- executes through the
+      backend and its evidence reaches the durable receipt.
     """
     config = seam("success")
-    intent = _intent(capability, seam_config=config, intent_id="attempt:durable-seam")
+    intent = _intent(capability, intent_id="attempt:durable-seam")
+    intent["arguments"] = {"runtime_seam": str(config)}
     receipt = submission.submit_intent(intent, instance=persistent_instance)
 
     run = persistent_instance.get_run_by_id(receipt["receipt_id"])
     assert run.job_name == job_name
-    assert run.run_config["resources"][resource_key]["config"]["runtime_seam"] == str(
-        config
-    )
+    assert "runtime_seam" not in run.run_config["resources"][resource_key]["config"]
 
     spec = resolve_workflow(capability)
-    executed = _execute_recorded_run(
+    refused = _execute_recorded_run(
         persistent_instance, receipt["receipt_id"], spec.job_factory
     )
-    assert executed.success is True
-    summary = submission.seam_evidence_from_run(
-        persistent_instance, receipt["receipt_id"]
+    assert refused.success is False
+    refused_status = submission.query_receipt(receipt, instance=persistent_instance)
+    assert refused_status["state"] == "terminal"
+    assert (
+        refused_status["result"]["observation"]["category"] == "INTEGRATION_CONFLICT"
     )
+    assert submission.seam_evidence_from_run(
+        persistent_instance, receipt["receipt_id"]
+    ) is None
+
+    deployed = persistent_instance.create_run_for_job(
+        spec.job,
+        run_config={
+            "resources": {
+                resource_key: {
+                    "config": {
+                        **spec.settings_from_arguments({}),
+                        "runtime_seam": str(config),
+                    }
+                }
+            }
+        },
+        tags=dict(run.tags),
+    )
+    executed = _execute_recorded_run(
+        persistent_instance, deployed.run_id, spec.job_factory
+    )
+    assert executed.success is True
+    summary = submission.seam_evidence_from_run(persistent_instance, deployed.run_id)
     assert summary is not None
     assert summary["changed_paths"] == ["src/stub.py"]
     assert summary["patch_digest"] == _expected_digest()
 
-    status = submission.query_receipt(receipt, instance=persistent_instance)
+    status = submission.query_receipt(deployed.run_id, instance=persistent_instance)
     assert validate_execution_status(status) is status
     assert status["state"] == "terminal"
     result = status["result"]

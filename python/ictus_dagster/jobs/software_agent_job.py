@@ -24,10 +24,12 @@ class SoftwareAgentSettings(ConfigurableResource):
     """Resource shape for the ``software.implement`` route.
 
     ``runtime_seam`` is the path to an operator-owned runtime seam
-    configuration; an orchestrating deployment sets it per run or in its own
-    code location.  It is unset by default and an unset seam keeps the route
-    fail-closed.  ``placeholder`` is the legacy route marker: it is accepted so
-    existing run configs keep validating and no longer selects behaviour.
+    configuration.  It is **deployment configuration**: the code location that
+    serves this job sets it (its resource default, or the run config that
+    deployment writes), and no intent argument can reach it.  Unset by default,
+    which keeps the route fail-closed.  ``placeholder`` is the legacy route
+    marker: it is accepted so existing run configs keep validating and no
+    longer selects behaviour.
     """
 
     capability: str = "software.implement"

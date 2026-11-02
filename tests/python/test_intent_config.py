@@ -217,38 +217,25 @@ def test_software_settings_keep_the_placeholder_shape(
 @pytest.mark.parametrize(
     ("capability", "mapper", "from_intent"), SOFTWARE_SETTINGS_MAPPERS
 )
-def test_software_settings_carry_a_named_runtime_seam(
-    capability, mapper, from_intent
-) -> None:
-    expected = {
-        "capability": capability,
-        "placeholder": True,
-        "runtime_seam": "/etc/ictus/seam.json",
-    }
-    assert mapper({"runtime_seam": "  /etc/ictus/seam.json  "}) == expected
-    assert from_intent(
-        _intent(capability, {"runtime_seam": "/etc/ictus/seam.json"})
-    ) == expected
-
-
-@pytest.mark.parametrize(
-    ("capability", "mapper", "from_intent"), SOFTWARE_SETTINGS_MAPPERS
-)
 @pytest.mark.parametrize(
     "seam",
     [
+        pytest.param("/etc/ictus/seam.json", id="path"),
+        pytest.param("  /etc/ictus/seam.json  ", id="padded-path"),
         pytest.param(None, id="null"),
         pytest.param(42, id="integer"),
         pytest.param(True, id="boolean"),
         pytest.param("", id="empty"),
         pytest.param("   ", id="blank"),
+        pytest.param(["seam.json"], id="list"),
     ],
 )
-def test_software_settings_omit_an_unusable_runtime_seam(
+def test_software_settings_never_read_a_seam_from_the_intent(
     capability, mapper, from_intent, seam
 ) -> None:
-    # Anything that is not a non-empty string leaves the fail-closed default in
-    # place instead of reaching the seam with an unusable path.
+    # The runtime seam is deployment configuration: the code location sets the
+    # resource's ``runtime_seam``, so the seam config file Ictus imports is
+    # chosen by the operator and never by intent data -- valid path or not.
     expected = {"capability": capability, "placeholder": True}
     assert mapper({"runtime_seam": seam}) == expected
     assert from_intent(_intent(capability, {"runtime_seam": seam})) == expected

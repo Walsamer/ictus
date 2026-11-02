@@ -163,6 +163,15 @@ class StubRuntimeBackend:
                 changed_paths=["src/stub.py"],
                 termination={"requested": True, "signals": ["SIGKILL"], "confirmed": False},
             )
+        if behavior == "interrupt":
+            # An interpreter-level abort (not an ``Exception``) after a live
+            # process started: the seam must still stop the writer.  The pid is
+            # written where the test can check the group is really gone.
+            process = control.spawn([sys.executable, "-c", "import time; time.sleep(300)"])
+            Path(request.workspace.descriptor_path).with_suffix(".pid").write_text(
+                str(process.pid), encoding="utf-8"
+            )
+            raise KeyboardInterrupt("stub aborted")
         if behavior == "cancel":
             control.spawn([sys.executable, "-c", "import time; time.sleep(300)"])
             termination = control.cancel("control_plane_request")

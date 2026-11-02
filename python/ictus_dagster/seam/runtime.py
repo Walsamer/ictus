@@ -255,6 +255,11 @@ def execute(context: OpExecutionContext, prepared: dict[str, Any]) -> dict[str, 
             description=f"runtime backend failed during execution: {exc}",
             details=control.termination,
         ) from None
+    except BaseException:
+        # An interrupt or an interpreter-level abort still stops the writer: the
+        # attempt must never leave a live process group behind, whatever ends it.
+        control.cancel("attempt_aborted")
+        raise
     leftover = control.finish()
     if leftover is not None:
         raise seam_failure(
